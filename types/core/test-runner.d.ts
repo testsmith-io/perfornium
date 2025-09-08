@@ -1,0 +1,32 @@
+import { TestConfiguration } from '../config/types';
+import { MetricsCollector } from '../metrics/collector';
+export declare class TestRunner {
+    private config;
+    private metrics;
+    private handlers;
+    private outputs;
+    private activeVUs;
+    private isRunning;
+    private startTime;
+    constructor(config: TestConfiguration);
+    run(): Promise<void>;
+    private setupCSVBaseDirectory;
+    stop(): Promise<void>;
+    private initialize;
+    private initializeProtocolHandlers;
+    private getRequiredProtocols;
+    private findWSDLUrl;
+    private initializeOutputs;
+    private executeLoadPattern;
+    private getLoadPattern;
+    private createVUFactory;
+    private waitForVUsToComplete;
+    private cleanup;
+    private finalize;
+    private logSummary;
+    private logErrorDetails;
+    private generateReport;
+    getMetrics(): MetricsCollector;
+    getActiveVUCount(): number;
+    isTestRunning(): boolean;
+}
