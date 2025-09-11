@@ -2,14 +2,17 @@
   "name": "perfornium",
   "version": "1.0.0",
   "description": "Flexible performance testing framework for REST, SOAP, and web applications",
-  "main": "dist/index.js",
-  "types": "types/index.d.ts",
+  "main": "./dist/index.js",
   "bin": {
     "perfornium": "dist/cli/cli.js"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./dsl": "./dist/dsl/index.js"
+  },
   "files": [
     "dist",
-    "bin"
+    "README.md"
   ],
   "scripts": {
     "build": "tsc && npm run copy-templates",

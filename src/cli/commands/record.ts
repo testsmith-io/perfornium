@@ -8,6 +8,7 @@ interface RecordOptions {
   output?: string;
   viewport?: string;
   baseUrl?: string;
+  format?: 'yaml' | 'typescript';  // Added format option
 }
 
 interface Action {
@@ -27,13 +28,19 @@ interface Action {
 }
 
 export async function recordCommand(url: string, options: RecordOptions = {}): Promise<void> {
+  // Determine output file extension based on format
+  const format = options.format || 'yaml';
+  const defaultOutput = format === 'typescript' ? 'recorded-scenario.spec.ts' : 'recorded-scenario.yml';
+
   const recorder = new WebRecorder({
-    output_file: options.output || 'recorded-scenario.yml',
-    base_url: options.baseUrl
+    output_file: options.output || defaultOutput,
+    base_url: options.baseUrl,
+    format: format
   });
 
   try {
     logger.info('Starting web recording session...');
+    logger.info(`Output format: ${format.toUpperCase()}`);
     logger.info('Navigate to your application and perform the actions you want to record');
     logger.info('Right-click elements to add named verifications for reporting');
     logger.info('Think times between actions will be automatically recorded');
@@ -61,6 +68,7 @@ class WebRecorder {
   constructor(config: any) {
     this.config = {
       output_file: 'recorded-scenario.yml',
+      format: 'yaml',
       ...config
     };
   }
@@ -155,6 +163,7 @@ class WebRecorder {
   }
 
   private getClientScript(): string {
+    // [Keep existing getClientScript implementation exactly as is - too long to repeat]
     return `
       (() => {
         let lastInputValues = new Map();
@@ -174,8 +183,8 @@ class WebRecorder {
             if (value.length > 15 && (
               /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ||
               /^[0-9A-Z]{15,}$/i.test(value) ||
-              /^\d{10,}$/.test(value) ||
-              /_\d{5,}$/.test(value)
+              /^\\d{10,}$/.test(value) ||
+              /_\\d{5,}$/.test(value)
             )) {
               return true;
             }
@@ -665,7 +674,7 @@ class WebRecorder {
       }
     }
 
-    this.saveRecording();
+    await this.saveRecording();
   }
 
   private saveRecording(): void {
@@ -675,51 +684,11 @@ class WebRecorder {
       // Ensure directory exists
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-      // Clean up actions
-      const cleanedActions = this.actions
-          .filter(action => action.action && action.action.command)
-          .map(action => {
-            const cleanAction: any = {
-              name: action.name,
-              type: action.type,
-              action: { ...action.action }
-            };
-
-            if (action.think_time) {
-              cleanAction.think_time = action.think_time;
-            }
-
-            return cleanAction;
-          });
-
-      const scenario = {
-        name: 'Recorded Web Scenario',
-        description: `Recorded on ${new Date().toISOString()}`,
-        global: {
-          base_url: this.config.base_url || 'https://example.com',
-          browser: { type: 'chromium', headless: false }
-        },
-        load: {
-          pattern: 'basic',
-          virtual_users: 1,
-          ramp_up: '30s'
-        },
-        scenarios: [{
-          name: 'recorded_user_journey',
-          weight: 100,
-          loop: 1,
-          think_time: '1-3',
-          steps: cleanedActions
-        }],
-        outputs: [{ type: 'json', file: 'results/recorded-test-results.json' }],
-        report: { generate: true, output: 'reports/recorded-test-report.html' }
-      };
-
-      const content = yaml.stringify(scenario, { indent: 2, lineWidth: 120 });
-      fs.writeFileSync(outputPath, content, 'utf8');
-
-      const stats = fs.statSync(outputPath);
-      logger.info(`File saved successfully: ${outputPath} (${stats.size} bytes)`);
+      if (this.config.format === 'typescript') {
+        this.saveAsTypeScriptDSL(outputPath);
+      } else {
+        this.saveAsYAML(outputPath);
+      }
 
     } catch (error) {
       logger.error('Save failed:', error);
@@ -734,5 +703,279 @@ class WebRecorder {
         logger.error('Emergency save also failed:', emergencyError);
       }
     }
+  }
+
+  private saveAsYAML(outputPath: string): void {
+    // Clean up actions
+    const cleanedActions = this.actions
+        .filter(action => action.action && action.action.command)
+        .map(action => {
+          const cleanAction: any = {
+            name: action.name,
+            type: action.type,
+            action: { ...action.action }
+          };
+
+          if (action.think_time) {
+            cleanAction.think_time = action.think_time;
+          }
+
+          return cleanAction;
+        });
+
+    const scenario = {
+      name: 'Recorded Web Scenario',
+      description: `Recorded on ${new Date().toISOString()}`,
+      global: {
+        base_url: this.config.base_url || 'https://example.com',
+        browser: { type: 'chromium', headless: false }
+      },
+      load: {
+        pattern: 'basic',
+        virtual_users: 1,
+        ramp_up: '30s'
+      },
+      scenarios: [{
+        name: 'recorded_user_journey',
+        weight: 100,
+        loop: 1,
+        think_time: '1-3',
+        steps: cleanedActions
+      }],
+      outputs: [{ type: 'json', file: 'results/recorded-test-results.json' }],
+      report: { generate: true, output: 'reports/recorded-test-report.html' }
+    };
+
+    const content = yaml.stringify(scenario, { indent: 2, lineWidth: 120 });
+    fs.writeFileSync(outputPath, content, 'utf8');
+
+    const stats = fs.statSync(outputPath);
+    logger.info(`File saved successfully: ${outputPath} (${stats.size} bytes)`);
+  }
+
+  private saveAsTypeScriptDSL(outputPath: string): void {
+    // Generate TypeScript DSL code using the CORRECT DSL format
+    const tsContent = `import { test, faker, testData } from 'perfornium2';
+
+/**
+ * Recorded Web Scenario
+ * Generated on: ${new Date().toISOString()}
+ * Starting URL: ${this.config.base_url || 'https://example.com'}
+ * 
+ * This test can be customized with:
+ * - Dynamic data generation using faker
+ * - Custom logic and conditionals
+ * - Data-driven testing with CSV/JSON
+ * - API calls and database queries
+ */
+
+// Generate test data
+const testData = {
+  username: faker.internet.email(),
+  password: faker.internet.password({ length: 12 }),
+  firstName: faker.person.firstName(),
+  lastName: faker.person.lastName(),
+  // Add more generated data as needed
+};
+
+// Build the test configuration
+const testConfig = test('Recorded Web Scenario')
+  .baseUrl('${this.config.base_url || 'https://example.com'}')
+  .withBrowser('chromium', {
+    headless: process.env.HEADLESS !== 'false',
+    viewport: { width: 1920, height: 1080 }
+  })
+  .timeout(30000)
+  .scenario('Recorded User Journey', 100)  // weight: 100
+    .beforeScenario(async (context) => {
+      // Optional: Setup code before scenario starts
+      console.log('Starting test for VU:', context.vu_id);
+      
+      // Example: Get auth token via API
+      // const token = await getAuthToken(testData.username, testData.password);
+      // context.variables.authToken = token;
+    })
+${this.generateDSLSteps()}
+    .afterScenario(async (context) => {
+      // Optional: Cleanup code after scenario
+      console.log('Test completed for VU:', context.vu_id);
+      
+      // Example: Cleanup test data
+      // if (context.variables.userId) {
+      //   await deleteTestUser(context.variables.userId);
+      // }
+    })
+    .done()  // End scenario and return to test builder
+  .withLoad({
+    pattern: 'basic',
+    virtual_users: 1,
+    ramp_up: '30s',
+    duration: '5m'
+  })
+  .withJSONOutput('results/test-results.json')
+  .withCSVOutput('results/test-results.csv')  // Optional
+  .withReport('reports/test-report.html')
+  .build();
+
+// Export the configuration
+export default testConfig;
+
+// Alternative: Run the test directly without building
+// await test('Quick Test')
+//   .baseUrl('${this.config.base_url || 'https://example.com'}')
+//   .scenario('Quick Test')
+//     .goto('/')
+//     .click('[data-test="nav-sign-in"]')
+//     .done()
+//   .run();
+
+// Alternative: Run with stepping load pattern
+// const steppingTest = test('Stepping Load Test')
+//   .baseUrl('${this.config.base_url || 'https://example.com'}')
+//   .scenario('User Journey', 100)
+//     ${this.actions.length > 0 ? '// ... add your steps here ...' : '.goto("/")'}
+//     .done()
+//   .withLoad({
+//     pattern: 'stepping',
+//     steps: [
+//       { users: 10, duration: '2m', ramp_up: '30s' },
+//       { users: 50, duration: '5m', ramp_up: '1m' },
+//       { users: 100, duration: '10m', ramp_up: '2m' }
+//     ]
+//   })
+//   .build();
+
+// Alternative: Data-driven test with CSV
+// const dataDrivenTest = test('Data-Driven Test')
+//   .baseUrl('${this.config.base_url || 'https://example.com'}')
+//   .scenario('Login Test', 100)
+//     .withCSV('test-data.csv', {
+//       mode: 'unique',
+//       cycleOnExhaustion: true
+//     })
+//     .fill('[data-test="email"]', '{{email}}')  // Use CSV column
+//     .fill('[data-test="password"]', '{{password}}')  // Use CSV column
+//     .done()
+//   .build();
+`;
+
+    fs.writeFileSync(outputPath, tsContent, 'utf8');
+
+    const stats = fs.statSync(outputPath);
+    logger.info(`TypeScript DSL file saved successfully: ${outputPath} (${stats.size} bytes)`);
+  }
+
+  private generateDSLSteps(): string {
+    const steps: string[] = [];
+
+    for (const action of this.actions) {
+      if (!action.action || !action.action.command) continue;
+
+      const { command, selector, value, url, key, expected_text, name } = action.action;
+      const thinkTime = action.think_time;
+
+      // Add think time if present (before the action)
+      if (thinkTime) {
+        steps.push(`    .wait('${thinkTime}')`);
+      }
+
+      switch (command) {
+        case 'goto':
+          steps.push(`    .goto('${url || '/'}')`);
+          break;
+
+        case 'click':
+          steps.push(`    .click('${this.escapeForTypeScript(selector || '')}')`);
+          break;
+
+        case 'fill':
+          // Show how dynamic data can be used
+          if (selector?.includes('email') || selector?.includes('username')) {
+            steps.push(`    .fill('${this.escapeForTypeScript(selector)}', testData.username)`);
+          } else if (selector?.includes('password')) {
+            steps.push(`    .fill('${this.escapeForTypeScript(selector)}', testData.password)`);
+          } else if (selector?.includes('first') && selector?.includes('name')) {
+            steps.push(`    .fill('${this.escapeForTypeScript(selector)}', testData.firstName)`);
+          } else if (selector?.includes('last') && selector?.includes('name')) {
+            steps.push(`    .fill('${this.escapeForTypeScript(selector)}', testData.lastName)`);
+          } else {
+            steps.push(`    .fill('${this.escapeForTypeScript(selector || '')}', '${this.escapeForTypeScript(value || '')}')`);
+          }
+          break;
+
+        case 'select':
+          steps.push(`    .select('${this.escapeForTypeScript(selector || '')}', '${this.escapeForTypeScript(value || '')}')`);
+          break;
+
+        case 'press':
+          // Press is commented out in DSL, skip it or convert to custom step
+          steps.push(`    .step('Press ${key}', async (context) => {`);
+          steps.push(`      // Press key action: ${key} on ${selector}`);
+          steps.push(`      // Note: press() is not available in the DSL`);
+          steps.push(`    })`);
+          break;
+
+        case 'verify_exists':
+        case 'verify_visible':
+          if (name) {
+            steps.push(`    .expectVisible('${this.escapeForTypeScript(selector || '')}', '${this.escapeForTypeScript(name)}')`);
+          } else {
+            steps.push(`    .expectVisible('${this.escapeForTypeScript(selector || '')}')`);
+          }
+          break;
+
+        case 'verify_text':
+          if (name) {
+            steps.push(`    .expectText('${this.escapeForTypeScript(selector || '')}', '${this.escapeForTypeScript(expected_text || '')}', '${this.escapeForTypeScript(name)}')`);
+          } else {
+            steps.push(`    .expectText('${this.escapeForTypeScript(selector || '')}', '${this.escapeForTypeScript(expected_text || '')}')`);
+          }
+          break;
+
+        case 'verify_not_exists':
+          if (name) {
+            steps.push(`    .expectNotVisible('${this.escapeForTypeScript(selector || '')}', '${this.escapeForTypeScript(name)}')`);
+          } else {
+            steps.push(`    .expectNotVisible('${this.escapeForTypeScript(selector || '')}')`);
+          }
+          break;
+
+        default:
+          // Unknown command - create custom step
+          steps.push(`    .step('${command}', async (context) => {`);
+          steps.push(`      // Custom action: ${command}`);
+          steps.push(`    })`);
+          break;
+      }
+    }
+
+    // Add example of custom logic (but not too much to avoid clutter)
+    if (steps.length > 0 && steps.length < 20) {
+      steps.push(`    .step('Custom Logic Example', async (context) => {`);
+      steps.push(`      // Add custom logic here`);
+      steps.push(`      // if (someCondition) {`);
+      steps.push(`      //   await context.page.click('.alternative-button');`);
+      steps.push(`      // }`);
+      steps.push(`      // `);
+      steps.push(`      // You can also make API calls:`);
+      steps.push(`      // const response = await fetch(\`\${context.variables.base_url}/api/data\`);`);
+      steps.push(`      // const data = await response.json();`);
+      steps.push(`      // context.variables.apiData = data;`);
+      steps.push(`    })`);
+    }
+
+    return steps.length > 0 ? '\n' + steps.join('\n') : '\n    .goto("/")  // No actions recorded';
+  }
+
+// Make sure escapeForTypeScript method exists and is correct:
+  private escapeForTypeScript(str: string): string {
+    if (!str) return '';
+    return str
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
   }
 }

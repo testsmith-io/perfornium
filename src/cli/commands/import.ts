@@ -10,17 +10,19 @@ import ora from 'ora';
 import { OpenAPIImporter } from '../../importers/open-api-importer';
 import { WSDLImporter } from '../../importers/wsdl-importer';
 import { HARImporter } from '../../importers/har-importer';
+import {OutputFormat, TestOutputWriter} from "../../utils/test-output-writer";
 // import { PostmanImporter } from '../importers/postman-importer';
 // import { DataCorrelationAnalyzer } from '../importers/correlation-analyzer';
 // import { logger } from '../utils/logger';
 
 interface ImportOptions {
     output: string;
-    format: 'yaml' | 'json';
+    format: 'yaml' | 'typescript';  // Now supports typescript
     verbose?: boolean;
     interactive?: boolean;
     autoCorrelate?: boolean;
     baseUrl?: string;
+    sourceFile?: string;  // Add this to track source
     tags?: string;
     excludeTags?: string;
     paths?: string;
@@ -486,7 +488,11 @@ async function reviewCorrelations(dependencies: Dependency[], scenarioName: stri
     return approved;
 }
 
-async function generateOutputFiles(scenarios: Scenario[], type: string, options: ImportOptions): Promise<void> {
+async function generateOutputFiles(
+    scenarios: Scenario[],
+    type: string,
+    options: ImportOptions
+): Promise<void> {
     await ensureDirectory(options.output);
 
     // Group scenarios into files based on scenariosPerFile option
@@ -497,39 +503,65 @@ async function generateOutputFiles(scenarios: Scenario[], type: string, options:
         groups.push(scenarios.slice(i, i + scenariosPerFile));
     }
 
+    // Determine output format - now supports typescript
+    const format: OutputFormat = options.format === 'typescript'
+        ? 'typescript'
+        : options.format as OutputFormat || 'yaml';
+
     for (let i = 0; i < groups.length; i++) {
         const group = groups[i];
-        const testConfig = {
-            name: `${type.toUpperCase()} Import ${groups.length > 1 ? `(Part ${i + 1})` : ''}`,
-            description: `Generated test configuration from ${type.toUpperCase()} import`,
-            global: {
-                base_url: '{{env.BASE_URL}}',
-                timeout: 30000,
-                think_time: '1-3'
-            },
-            load: {
-                pattern: 'basic',
-                virtual_users: 5,
-                ramp_up: '30s',
-                duration: '2m'
-            },
-            scenarios: group
-        };
 
+        const testName = groups.length > 1
+            ? `${type.toUpperCase()} Import (Part ${i + 1})`
+            : `${type.toUpperCase()} Import`;
+
+        // Determine file extension based on format
+        const extension = format === 'typescript' ? '.spec.ts' : `.${format}`;
         const filename = groups.length > 1
-            ? `${type}-import-${i + 1}.${options.format}`
-            : `${type}-import.${options.format}`;
+            ? `${type}-import-${i + 1}${extension}`
+            : `${type}-import${extension}`;
 
         const initialPath = path.join(options.output, filename);
-        const filepath = await getSafeFilename(initialPath);
+        const filepath = await TestOutputWriter.getSafeFilename(initialPath);
 
-        if (options.format === 'json') {
-            await fs.writeFile(filepath, JSON.stringify(testConfig, null, 2), 'utf8');
-        } else {
-            await fs.writeFile(filepath, yaml.dump(testConfig, { indent: 2, lineWidth: 120 }), 'utf8');
-        }
+        // Use the generic TestOutputWriter
+        const writer = new TestOutputWriter({
+            name: testName,
+            description: `Generated test configuration from ${type.toUpperCase()} import`,
+            baseUrl: options.baseUrl || '{{env.BASE_URL}}',
+            scenarios: group,
+            format: format,
+            outputPath: filepath,
+            sourceType: type as any,
+            metadata: {
+                importedFrom: options.sourceFile,
+                importedAt: new Date().toISOString(),
+                totalEndpoints: scenarios.length,
+                groupIndex: i + 1,
+                totalGroups: groups.length,
+                filters: {
+                    tags: options.tags,
+                    excludeTags: options.excludeTags,
+                    paths: options.paths,
+                    methods: options.methods,
+                    domains: options.filterDomains,
+                    excludeDomains: options.excludeDomains,
+                    services: options.services,
+                    operations: options.operations,
+                    folders: options.folders
+                }
+            }
+        }, {
+            // DSL options for importers
+            includeDataGeneration: true,
+            includeCSVSupport: true,
+            includeHooks: true,
+            includeCustomLogic: type !== 'wsdl',  // Less custom logic for SOAP
+            includeMultipleLoadPatterns: true
+        });
 
-        console.log(`Generated: ${filepath}`);
+        const savedPath = await writer.write();
+        console.log(chalk.green(`✅ Generated: ${savedPath}`));
     }
 }
 

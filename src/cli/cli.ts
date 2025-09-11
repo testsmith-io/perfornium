@@ -62,80 +62,101 @@ program
     .option('--title <title>', 'Custom report title')
     .action(reportCommand);
 
+// ============================================
+// Record Command
+// ============================================
 program
     .command('record')
     .description('Record web interactions for test creation')
     .argument('<url>', 'Starting URL for recording')
-    .option('-o, --output <file>', 'Output file for recorded scenario', 'recorded-scenario.yml')
+    .option('-o, --output <file>', 'Output file for recorded scenario')
     .option('--viewport <viewport>', 'Browser viewport size (e.g., 1920x1080)')
     .option('--base-url <url>', 'Base URL to relativize recorded URLs')
-    .action(recordCommand);
+    .option('-f, --format <format>', 'Output format: yaml, json, or typescript', 'yaml')
+    .action(async (url: string, options: any) => {
+        // Auto-determine file extension if output not specified
+        if (!options.output) {
+            const extensions: Record<string, string> = {
+                yaml: 'recorded-scenario.yml',
+                json: 'recorded-scenario.json',
+                typescript: 'recorded-scenario.spec.ts'
+            };
+            options.output = extensions[options.format] || 'recorded-scenario.yml';
+        }
 
-// NEW: Import command group
+        await recordCommand(url, options);
+    });
+
+// ============================================
+// Import Commands
+// ============================================
 const importCmd = program
-    .command('import')
-    .description('Import test scenarios from various sources');
+    .command('import <type>')
+    .description('Import API definitions to generate test scenarios')
+    .argument('<source>', 'Source file to import');
 
-importCmd
-    .command('openapi')
-    .description('Import test scenarios from OpenAPI specification')
-    .argument('<spec-file>', 'OpenAPI specification file (JSON or YAML)')
-    .option('-o, --output <directory>', 'Output directory for generated tests', './tests')
-    .option('-f, --format <format>', 'Output format (yaml|json)', 'yaml')
-    .option('--base-url <url>', 'Override base URL from spec')
-    .option('--tags <tags>', 'Comma-separated list of tags to include')
-    .option('--exclude-tags <tags>', 'Comma-separated list of tags to exclude')
-    .option('--paths <paths>', 'Comma-separated list of path patterns to include')
-    .option('--methods <methods>', 'Comma-separated list of HTTP methods to include')
-    .option('--auto-correlate', 'Automatically detect and apply data correlations', true)
-    .option('--interactive', 'Interactive endpoint selection', true)
-    .option('--scenarios-per-file <number>', 'Maximum scenarios per output file', '10')
-    .option('-v, --verbose', 'Enable verbose logging')
-    .action((specFile, options) => importCommand('openapi', specFile, options));
+// Common import options
+const addImportOptions = (cmd: Command) => {
+    return cmd
+        .option('-o, --output <dir>', 'Output directory', './tests')
+        .option('-f, --format <format>', 'Output format: yaml, json, or typescript', 'yaml')
+        .option('-i, --interactive', 'Interactive mode for selecting endpoints')
+        .option('--auto-correlate', 'Automatically detect and apply data correlations')
+        .option('--base-url <url>', 'Override base URL from specification')
+        .option('--scenarios-per-file <n>', 'Number of scenarios per output file', '10')
+        .option('-v, --verbose', 'Verbose output with detailed information');
+};
 
-importCmd
-    .command('wsdl')
-    .description('Import test scenarios from WSDL specification')
-    .argument('<wsdl-file>', 'WSDL specification file')
-    .option('-o, --output <directory>', 'Output directory for generated tests', './tests')
-    .option('-f, --format <format>', 'Output format (yaml|json)', 'yaml')
-    .option('--base-url <url>', 'Override service endpoint URL')
-    .option('--services <services>', 'Comma-separated list of service names to include')
-    .option('--operations <operations>', 'Comma-separated list of operation names to include')
-    .option('--interactive', 'Interactive service selection', true)
-    .option('-v, --verbose', 'Enable verbose logging')
-    .action((wsdlFile, options) => importCommand('wsdl', wsdlFile, options));
+// OpenAPI import
+addImportOptions(
+    importCmd
+        .command('openapi <file>')
+        .description('Import from OpenAPI/Swagger specification')
+        .option('--tags <tags>', 'Filter by tags (comma-separated)')
+        .option('--exclude-tags <tags>', 'Exclude specific tags (comma-separated)')
+        .option('--paths <patterns>', 'Filter by path patterns (comma-separated regex)')
+        .option('--methods <methods>', 'Filter by HTTP methods (comma-separated)')
+).action(async (file: string, options: any) => {
+    await importCommand('openapi', file, options);
+});
 
-importCmd
-    .command('har')
-    .description('Import test scenarios from HAR recording')
-    .argument('<har-file>', 'HAR (HTTP Archive) file from browser recording')
-    .option('-o, --output <directory>', 'Output directory for generated tests', './tests')
-    .option('-f, --format <format>', 'Output format (yaml|json)', 'yaml')
-    .option('--filter-domains <domains>', 'Comma-separated list of domains to include')
-    .option('--exclude-domains <domains>', 'Comma-separated list of domains to exclude')
-    .option('--min-response-time <ms>', 'Minimum response time to include (ms)', '0')
-    .option('--max-response-time <ms>', 'Maximum response time to include (ms)')
-    .option('--methods <methods>', 'Comma-separated HTTP methods to include')
-    .option('--exclude-static', 'Exclude static resources (images, CSS, JS)', true)
-    .option('--auto-correlate', 'Automatically detect and apply data correlations', true)
-    .option('--interactive', 'Interactive endpoint selection', true)
-    .option('--group-by <criteria>', 'Group scenarios by (domain|path|none)', 'domain')
-    .option('-v, --verbose', 'Enable verbose logging')
-    .action((harFile, options) => importCommand('har', harFile, options));
+// WSDL import
+addImportOptions(
+    importCmd
+        .command('wsdl <file>')
+        .description('Import from WSDL file')
+        .option('--services <names>', 'Filter by service names (comma-separated)')
+        .option('--operations <names>', 'Filter by operation names (comma-separated)')
+        .option('--soap-version <version>', 'SOAP version: 1.1, 1.2, or both', 'both')
+).action(async (file: string, options: any) => {
+    await importCommand('wsdl', file, options);
+});
 
-importCmd
-    .command('postman')
-    .description('Import test scenarios from Postman collection')
-    .argument('<collection-file>', 'Postman collection file (JSON)')
-    .option('-o, --output <directory>', 'Output directory for generated tests', './tests')
-    .option('-f, --format <format>', 'Output format (yaml|json)', 'yaml')
-    .option('--environment <env-file>', 'Postman environment file')
-    .option('--folders <folders>', 'Comma-separated list of folder names to include')
-    .option('--auto-correlate', 'Automatically detect and apply data correlations', true)
-    .option('--interactive', 'Interactive request selection', true)
-    .option('-v, --verbose', 'Enable verbose logging')
-    .action((collectionFile, options) => importCommand('postman', collectionFile, options));
+// HAR import
+addImportOptions(
+    importCmd
+        .command('har <file>')
+        .description('Import from HAR (HTTP Archive) file')
+        .option('--filter-domains <domains>', 'Include specific domains (comma-separated)')
+        .option('--exclude-domains <domains>', 'Exclude specific domains (comma-separated)')
+        .option('--methods <methods>', 'Filter by HTTP methods (comma-separated)')
+        .option('--skip-static', 'Skip static resources (images, CSS, JS)', true)
+).action(async (file: string, options: any) => {
+    await importCommand('har', file, options);
+});
+
+// importCmd
+//     .command('postman')
+//     .description('Import test scenarios from Postman collection')
+//     .argument('<collection-file>', 'Postman collection file (JSON)')
+//     .option('-o, --output <directory>', 'Output directory for generated tests', './tests')
+//     .option('-f, --format <format>', 'Output format (yaml|json)', 'yaml')
+//     .option('--environment <env-file>', 'Postman environment file')
+//     .option('--folders <folders>', 'Comma-separated list of folder names to include')
+//     .option('--auto-correlate', 'Automatically detect and apply data correlations', true)
+//     .option('--interactive', 'Interactive request selection', true)
+//     .option('-v, --verbose', 'Enable verbose logging')
+//     .action((collectionFile, options) => importCommand('postman', collectionFile, options));
 
 // NEW: Correlate command
 // program

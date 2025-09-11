@@ -1,9 +1,11 @@
+// Updated ConfigParser to support both YAML and TypeScript
+
 import * as YAML from 'yaml';
 import * as fs from 'fs';
 import * as path from 'path';
-import {ReportConfig, TestConfiguration} from './types';
-import {TemplateProcessor} from '../utils/template';
-import {CSVDataProvider} from '../core/csv-data-provider';
+import { ReportConfig, TestConfiguration } from './types';
+import { TemplateProcessor } from '../utils/template';
+import { CSVDataProvider } from '../core/csv-data-provider';
 
 export class ConfigParser {
   private templateProcessor = new TemplateProcessor();
@@ -15,8 +17,19 @@ export class ConfigParser {
       throw new Error(`Configuration file not found: ${configPath}`);
     }
 
-    const configContent = fs.readFileSync(configPath, 'utf8');
-    const config = this.parseContent(configContent);
+    let config: TestConfiguration;
+
+    // Determine file type and parse accordingly
+    const ext = path.extname(configPath).toLowerCase();
+
+    if (ext === '.ts' || ext === '.js') {
+      // Handle TypeScript/JavaScript files
+      config = await this.parseTypeScript(configPath);
+    } else {
+      // Handle YAML/JSON files
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      config = this.parseContent(configContent);
+    }
 
     console.log('🔍 Parsed config.global:', JSON.stringify(config.global, null, 2));
 
@@ -39,6 +52,145 @@ export class ConfigParser {
     return config;
   }
 
+  private async parseTypeScript(configPath: string): Promise<TestConfiguration> {
+    try {
+      // Resolve to absolute path
+      const absolutePath = path.resolve(configPath);
+
+      // Check if file exists
+      if (!fs.existsSync(absolutePath)) {
+        throw new Error(`Configuration file not found: ${absolutePath}`);
+      }
+
+      let module: any;
+
+      if (absolutePath.endsWith('.ts')) {
+        // For TypeScript files, we need proper transpilation support
+        try {
+          // Try to use ts-node/register for TypeScript support
+          require('ts-node/register');
+        } catch (e) {
+          // If ts-node is not globally available, try to use it from local node_modules
+          try {
+            const tsNodePath = require.resolve('ts-node/register', { paths: [process.cwd()] });
+            require(tsNodePath);
+          } catch (e2) {
+            // If ts-node still not found, provide helpful error
+            console.warn('⚠️  ts-node not found. Installing it will enable TypeScript imports.');
+            console.warn('   Install with: npm install --save-dev ts-node typescript');
+            console.warn('   Attempting to run as plain JavaScript...\n');
+          }
+        }
+
+        // Clear require cache
+        if (require.cache[absolutePath]) {
+          delete require.cache[absolutePath];
+        }
+
+        try {
+          // Try to require the file
+          module = require(absolutePath);
+        } catch (error: any) {
+          // If it fails with import/export errors, try alternative approaches
+          if (error.message.includes('Cannot use import statement') ||
+              error.message.includes('Unexpected token')) {
+
+            // Check if this is a plain config file (no imports) or a DSL file (with imports)
+            const fileContent = fs.readFileSync(absolutePath, 'utf8');
+            const hasImports = fileContent.includes('import ') || fileContent.includes('export ');
+
+            if (hasImports) {
+              // This is a DSL file with imports - it needs ts-node
+              throw new Error(
+                  'TypeScript file contains imports and requires ts-node for execution.\n' +
+                  'Please install it:\n' +
+                  '  npm install --save-dev ts-node typescript\n' +
+                  'Or globally:\n' +
+                  '  npm install -g ts-node typescript\n\n' +
+                  'Then run your test again.'
+              );
+            } else {
+              // This is a plain config file - we can evaluate it
+              module = this.evaluatePlainTypeScript(fileContent, absolutePath);
+            }
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        // Regular JavaScript file
+        module = require(absolutePath);
+      }
+
+      // Handle different export styles
+      let config: TestConfiguration;
+
+      if (module && module.default) {
+        config = module.default;
+      } else if (module && module.config) {
+        config = module.config;
+      } else if (typeof module === 'object' && module.name) {
+        config = module as TestConfiguration;
+      } else {
+        throw new Error('File must export a TestConfiguration object as default or named "config"');
+      }
+
+      // If it's a builder or has a build method, build it
+      if (typeof config === 'object' && 'build' in config && typeof config.build === 'function') {
+        config = config.build();
+      }
+
+      return config;
+    } catch (error: any) {
+      // Improve error messages
+      if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('perfornium')) {
+        throw new Error(
+            'Cannot find perfornium modules. Make sure you are importing from the correct path:\n' +
+            '  import { test } from "perfornium/dsl";\n' +
+            'Or if running from source:\n' +
+            '  import { test } from "./src/dsl";\n\n' +
+            'Original error: ' + error.message
+        );
+      }
+      throw new Error(`Failed to load configuration: ${error.message}`);
+    }
+  }
+
+  private evaluatePlainTypeScript(fileContent: string, absolutePath: string): any {
+    // Create a module context for plain TypeScript files without imports
+    const moduleContext = {
+      exports: {},
+      require: require,
+      module: { exports: {} },
+      __filename: absolutePath,
+      __dirname: path.dirname(absolutePath),
+      process: process,
+      console: console
+    };
+
+    try {
+      // Wrap in a function and execute
+      const fn = new Function(
+          'exports', 'require', 'module', '__filename', '__dirname', 'process', 'console',
+          fileContent
+      );
+      fn(
+          moduleContext.exports,
+          moduleContext.require,
+          moduleContext.module,
+          moduleContext.__filename,
+          moduleContext.__dirname,
+          moduleContext.process,
+          moduleContext.console
+      );
+
+      return moduleContext.module.exports || moduleContext.exports;
+    } catch (error: any) {
+      throw new Error(`Failed to evaluate TypeScript file: ${error.message}`);
+    }
+  }
+
+  // Rest of your existing methods remain the same...
   private setupBaseDirectories(config: TestConfiguration, configPath: string): void {
     let baseDir = path.dirname(configPath);
 
@@ -52,7 +204,6 @@ export class ConfigParser {
       currentDir = path.dirname(currentDir);
     }
 
-    // Rest of your existing logic...
     const hasCSVScenarios = config.scenarios?.some((s: any) => s.csv_data);
     const configStr = JSON.stringify(config);
     const hasTemplates = configStr.includes('{{template:') || configStr.includes('{{csv:');
@@ -139,15 +290,21 @@ export class ConfigParser {
       path.join(baseDir, 'config', 'environments', `${environment}.yml`),
       path.join(baseDir, 'config', 'environments', `${environment}.yaml`),
       path.join(baseDir, 'config', 'environments', `${environment}.json`),
+      path.join(baseDir, 'config', 'environments', `${environment}.ts`),
       path.join(baseDir, `${environment}.yml`),
       path.join(baseDir, `${environment}.yaml`),
-      path.join(baseDir, `${environment}.json`)
+      path.join(baseDir, `${environment}.json`),
+      path.join(baseDir, `${environment}.ts`)
     ];
 
     for (const envPath of envPaths) {
       if (fs.existsSync(envPath)) {
-        const envContent = fs.readFileSync(envPath, 'utf8');
-        return this.parseContent(envContent);
+        if (envPath.endsWith('.ts')) {
+          return await this.parseTypeScript(envPath);
+        } else {
+          const envContent = fs.readFileSync(envPath, 'utf8');
+          return this.parseContent(envContent);
+        }
       }
     }
 
@@ -173,7 +330,6 @@ export class ConfigParser {
       scenarios: env.scenarios || base.scenarios,
       outputs: env.outputs || base.outputs,
       report: mergeReportConfig(base.report, env.report),
-      // Simple merge for workers - let TypeScript infer the type
       workers: env.workers || base.workers
     };
   }
