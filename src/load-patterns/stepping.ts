@@ -1,7 +1,7 @@
 import { LoadPattern, VUFactory } from './base';
 import { parseTime, sleep } from '../utils/time';
 import { logger } from '../utils/logger';
-import { VirtualUser } from '../core/virtual-user';
+import { VirtualUser } from '../core';
 
 export class SteppingPattern implements LoadPattern {
   async execute(config: any, vuFactory: VUFactory): Promise<void> {
@@ -36,9 +36,13 @@ export class SteppingPattern implements LoadPattern {
             
             try {
               // CRITICAL: Await VU creation to ensure CSV initialization
-              console.log(`🔧 Creating VU ${vuId}...`);
+              logger.debug(`Creating VU ${vuId}...`);
               const vu = await this.createVU(vuFactory, vuId);
-              console.log(`✅ VU ${vuId} ready`);
+              logger.debug(`VU ${vuId} ready`);
+
+              // Record VU start for metrics and reporting
+              const metrics = vuFactory.getMetrics();
+              metrics.recordVUStart(vu.getId());
 
               activeVUs.push({ vu, startTime: vuStartTime, endTime: vuEndTime });
 

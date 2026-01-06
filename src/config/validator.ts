@@ -103,7 +103,7 @@ export class ConfigValidator {
       return;
     }
 
-    const validTypes = ['rest', 'soap', 'web', 'custom', 'wait'];
+    const validTypes = ['rest', 'soap', 'web', 'custom', 'wait', 'script'];
     if (!validTypes.includes(stepType)) {
       errors.push(`Invalid step type '${stepType}' at index ${index} in scenario '${scenarioName}'`);
     }
@@ -114,16 +114,19 @@ export class ConfigValidator {
         this.validateRESTStep(step, index, scenarioName, errors, warnings);
         break;
       case 'soap':
-        this.validateSOAPStep(step, index, scenarioName, errors, warnings);
+        this.validateSOAPStep(step, index, scenarioName, errors);
         break;
       case 'web':
-        this.validateWebStep(step, index, scenarioName, errors, warnings);
+        this.validateWebStep(step, index, scenarioName, errors);
         break;
       case 'custom':
         this.validateCustomStep(step, index, scenarioName, errors, warnings);
         break;
       case 'wait':
-        this.validateWaitStep(step, index, scenarioName, errors, warnings);
+        this.validateWaitStep(step, index, scenarioName, errors);
+        break;
+      case 'script':
+        this.validateScriptStep(step, index, scenarioName, errors);
         break;
     }
   }
@@ -143,13 +146,13 @@ export class ConfigValidator {
     }
   }
 
-  private validateSOAPStep(step: any, index: number, scenarioName: string, errors: string[], warnings: string[]): void {
+  private validateSOAPStep(step: any, index: number, scenarioName: string, errors: string[]): void {
     if (!step.operation) {
       errors.push(`SOAP step at index ${index} in scenario '${scenarioName}' must have an operation`);
     }
   }
 
-  private validateWebStep(step: any, index: number, scenarioName: string, errors: string[], warnings: string[]): void {
+  private validateWebStep(step: any, index: number, scenarioName: string, errors: string[]): void {
     if (!step.action) {
       errors.push(`Web step at index ${index} in scenario '${scenarioName}' must have an action`);
       return;
@@ -159,7 +162,7 @@ export class ConfigValidator {
       errors.push(`Web action at index ${index} in scenario '${scenarioName}' must have a command`);
     }
 
-    const validCommands = ['goto', 'click', 'fill', 'select', 'hover', 'screenshot', 'wait_for_selector', 'wait_for_text', 'evaluate', 'verify_text', 'verify_not_exists', 'verify_exists', 'verify_visible'];
+    const validCommands = ['goto', 'click', 'fill', 'select', 'hover', 'screenshot', 'wait_for_selector', 'wait_for_text', 'evaluate', 'verify_text', 'verify_not_exists', 'verify_exists', 'verify_visible', 'measure_web_vitals', 'performance_audit', 'wait_for_load_state', 'network_idle', 'dom_ready'];
     if (step.action.command && !validCommands.includes(step.action.command)) {
       errors.push(`Invalid web command '${step.action.command}' at index ${index} in scenario '${scenarioName}'`);
     }
@@ -175,9 +178,18 @@ export class ConfigValidator {
     }
   }
 
-  private validateWaitStep(step: any, index: number, scenarioName: string, errors: string[], warnings: string[]): void {
+  private validateWaitStep(step: any, index: number, scenarioName: string, errors: string[]): void {
     if (!step.duration) {
       errors.push(`Wait step at index ${index} in scenario '${scenarioName}' must have a duration`);
+    }
+  }
+
+  private validateScriptStep(step: any, index: number, scenarioName: string, errors: string[]): void {
+    if (!step.file) {
+      errors.push(`Script step at index ${index} in scenario '${scenarioName}' must have a file`);
+    }
+    if (!step.function) {
+      errors.push(`Script step at index ${index} in scenario '${scenarioName}' must have a function name`);
     }
   }
 

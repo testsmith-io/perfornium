@@ -1,4 +1,4 @@
-import { TestConfiguration, ReportConfig } from '../config/types';
+import { TestConfiguration, ReportConfig } from '../config';
 import { RemoteWorker } from './remote-worker';
 import { logger } from '../utils/logger';
 
@@ -17,7 +17,9 @@ export class LoadDistributor {
     workers: RemoteWorker[],
     strategy: DistributionStrategy
   ): WorkerAssignment[] {
-    const totalVUs = testConfig.load.virtual_users || 1;
+    const { getPrimaryLoadPhase } = require('../config/types/load-config');
+    const primaryPhase = getPrimaryLoadPhase(testConfig.load);
+    const totalVUs = primaryPhase.virtual_users || primaryPhase.vus || 1;
     
     logger.info(`📊 Distributing ${totalVUs} VUs using ${strategy} strategy`);
     

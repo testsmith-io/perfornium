@@ -1,8 +1,5 @@
-// types.ts - Add these interfaces to your existing types
+// Hooks interfaces for test lifecycle management
 
-import { CSVDataConfig } from "../../core/csv-data-provider";
-import { GlobalConfig } from "./global-config";
-import { LoadConfig } from "./load-config";
 import { Step } from "./step-types";
 
 export interface HookScript {
@@ -41,35 +38,8 @@ export interface StepHooks {
   teardownStep?: HookScript;
 }
 
-// Extend existing interfaces
-export interface TestConfiguration {
-  name: string;
-  load: LoadConfig;
-  scenarios: Scenario[];
-  global?: GlobalConfig;
-  hooks?: TestHooks;  // Add test-level hooks
-  // ... other existing properties
-}
-
-export interface Scenario {
-  name: string;
-  weight?: number;
-  loop?: number;
-  think_time?: string | number;
-  variables?: Record<string, any>;
-  steps: Step[];
-  
-  // CSV support
-  csv_data?: CSVDataConfig;
-  csv_mode?: 'next' | 'unique' | 'random';
-  
-  // Hooks support
-  hooks?: ScenarioHooks & LoopHooks;
-  
-  // Legacy support (will be moved to hooks)
-  setup?: string;     // Deprecated: use hooks.beforeScenario
-  teardown?: string;  // Deprecated: use hooks.teardownScenario
-}
+// Re-export Scenario from scenario-config to avoid duplication
+export { Scenario } from './scenario-config';
 
 // Script execution result
 export interface ScriptResult {

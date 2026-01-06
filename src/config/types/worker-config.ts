@@ -1,10 +1,3 @@
-export interface RemoteWorkerConfig {
-  host: string;
-  port: number;
-  capacity: number;
-  region: string;
-}
-
 export interface DistributedWorkerConfig {
   enabled: boolean;
   workers: string[];

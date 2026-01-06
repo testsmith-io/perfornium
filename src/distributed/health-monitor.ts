@@ -87,24 +87,4 @@ export class HealthMonitor {
       this.workerHealth.set(address, health);
     }
   }
-
-  getWorkerStatus(address: string): WorkerHealth | undefined {
-    return this.workerHealth.get(address);
-  }
-
-  getAllWorkerStatuses(): WorkerHealth[] {
-    return Array.from(this.workerHealth.values());
-  }
-
-  getHealthyWorkers(): string[] {
-    return Array.from(this.workerHealth.values())
-      .filter(health => health.isHealthy)
-      .map(health => health.address);
-  }
-
-  getUnhealthyWorkers(): string[] {
-    return Array.from(this.workerHealth.values())
-      .filter(health => !health.isHealthy)
-      .map(health => health.address);
-  }
 }

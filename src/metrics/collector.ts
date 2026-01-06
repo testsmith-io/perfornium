@@ -144,12 +144,7 @@ export class MetricsCollector extends EventEmitter {
       this.startBatchTimer();
     }
   }
-
-  setLoadPattern(pattern: string): void {
-    this.loadPatternType = pattern;
-  }
-
-  recordVUStart(vuId: number): void {
+    recordVUStart(vuId: number): void {
     this.vuStartEvents.push({
       vu_id: vuId,
       start_time: Date.now(),
@@ -628,50 +623,9 @@ export class MetricsCollector extends EventEmitter {
   getResults(): TestResult[] {
     return [...this.results];
   }
-
-  getFailedResults(): TestResult[] {
-    return this.results.filter(r => !r.success);
-  }
-
-  getVUStartEvents(): VUStartEvent[] {
-    return [...this.vuStartEvents];
-  }
-
-  getBatchStats(): { total_batches: number; pending_results: number } {
-    return {
-      total_batches: this.batchCounter,
-      pending_results: this.batchBuffer.length
-    };
-  }
-
-  // Add method to configure output paths without recreating the collector
-  setOutputPaths(jsonPath?: string, csvPath?: string): void {
-    if (jsonPath) {
-      this.defaultJsonPath = jsonPath;
-      if (this.realtimeConfig.incremental_files) {
-        this.realtimeConfig.incremental_files.json_path = jsonPath;
-      }
-    }
-    
-    if (csvPath) {
-      this.defaultCsvPath = csvPath;
-      if (this.realtimeConfig.incremental_files) {
-        this.realtimeConfig.incremental_files.csv_path = csvPath;
-      }
-    }
-    
-    logger.debug(`📄 Output paths updated - JSON: ${this.defaultJsonPath}, CSV: ${this.defaultCsvPath}`);
-  }
-
-  // Add method to disable incremental files if needed
-  disableIncrementalFiles(): void {
-    if (this.realtimeConfig.incremental_files) {
-      this.realtimeConfig.incremental_files.enabled = false;
-      logger.info(`📄 Incremental file generation disabled`);
-    }
-  }
-
-  getSummary(): MetricsSummary {
+// Add method to configure output paths without recreating the collector
+// Add method to disable incremental files if needed
+    getSummary(): MetricsSummary {
     const totalRequests = this.results.length;
     const successfulRequests = this.results.filter(r => r.success).length;
     const failedRequests = totalRequests - successfulRequests;
@@ -707,9 +661,9 @@ export class MetricsCollector extends EventEmitter {
       min_response_time: durations.length > 0 ? Math.min(...durations) : 0,
       max_response_time: durations.length > 0 ? Math.max(...durations) : 0,
       percentiles: this.calculatePercentiles(durations),
-      requests_per_second: totalDuration > 0 ? (totalRequests / (totalDuration / 1000)) : 0,
-      bytes_per_second: responseSizes.length > 0 && totalDuration > 0 
-        ? (responseSizes.reduce((a, b) => a + b, 0) / (totalDuration / 1000)) : 0,
+      requests_per_second: totalDuration > 0 ? (totalRequests / totalDuration) : 0,
+      bytes_per_second: responseSizes.length > 0 && totalDuration > 0
+        ? (responseSizes.reduce((a, b) => a + b, 0) / totalDuration) : 0,
       total_duration: totalDuration,
       error_distribution: errorDistribution,
       status_distribution: statusDistribution,
@@ -739,8 +693,13 @@ export class MetricsCollector extends EventEmitter {
     for (const [key, results] of stepGroups) {
       const [scenario, stepName] = key.split(':');
       const successfulResults = results.filter(r => r.success);
-      const responseTimes = successfulResults.map(r => r.duration);
-      
+
+      // Include ALL results (both successful and failed) for response time calculations
+      // Failed requests also have response times that should be included in statistics
+      const responseTimes = results
+        .map(r => r.response_time || r.duration || 0)
+        .filter(rt => rt > 0);
+
       // Error distribution for this step
       const errorDistribution: Record<string, number> = {};
       results.filter(r => !r.success).forEach(r => {
@@ -814,16 +773,16 @@ export class MetricsCollector extends EventEmitter {
 
   private calculatePercentiles(values: number[]): Record<number, number> {
     if (values.length === 0) return {};
-    
+
     const sorted = [...values].sort((a, b) => a - b);
-    const percentiles = [50, 90, 95, 99];
+    const percentiles = [50, 90, 95, 99, 99.9, 99.99];
     const result: Record<number, number> = {};
-    
+
     percentiles.forEach(p => {
       const index = Math.ceil((p / 100) * sorted.length) - 1;
       result[p] = sorted[Math.max(0, index)];
     });
-    
+
     return result;
   }
 

@@ -1,7 +1,8 @@
 import { DistributedCoordinator, DistributedTestConfig } from '../../distributed/coordinator';
-import { ConfigParser } from '../../config/parser';
+import { ConfigParser } from '../../config';
 import { ConfigValidator } from '../../config/validator';
 import { logger, LogLevel } from '../../utils/logger';
+import { TimestampHelper } from '../../utils/timestamp-helper';
 import * as fs from 'fs';
 import { RemoteWorkerConfig } from '../../distributed/remote-worker'; // Fixed import
 
@@ -93,27 +94,22 @@ export async function distributedCommand(
     // Generate report if requested
     if (options.report || testConfig.report?.generate) {
       try {
-        const { HTMLReportGenerator } = await import('../../reporting/generator');
-        const generator = new HTMLReportGenerator();
+        const { EnhancedHTMLReportGenerator } = await import('../../reporting/enhanced-html-generator');
+        const generator = new EnhancedHTMLReportGenerator();
         
-        const reportPath = options.output ? 
-          `${options.output}/distributed-report.html` : 
-          (testConfig.report?.output || 'distributed-report.html');
-        
-        // Create report config
-        const reportConfig = {
-          generate: true,
-          output: reportPath,
-          ...testConfig.report
-        };
-        
+        const timestamp = TimestampHelper.getTimestamp('file');
+        const reportFilename = `distributed-report-${timestamp}.html`;
+        // Always use timestamped filename for distributed reports in reports folder
+        const reportPath = options.output ?
+          `${options.output}/${reportFilename}` :
+          `reports/${reportFilename}`;
+
         await generator.generate(
           {
             testName: `${testConfig.name} (Distributed)`,
             summary: results.summary,
             results: results.results
           },
-          reportConfig,
           reportPath
         );
         

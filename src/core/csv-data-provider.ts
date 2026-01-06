@@ -13,10 +13,29 @@ export interface CSVDataConfig {
   filter?: string;
   randomize?: boolean;
   cycleOnExhaustion?: boolean;
+  /** Map CSV column names to custom variable names: { "csv_column": "variable_name" } */
+  variables?: Record<string, string>;
 }
 
 export interface CSVDataRow {
   [key: string]: string | number | boolean;
+}
+
+/** Apply variable name mapping to a row */
+function applyVariableMapping(row: CSVDataRow, mapping?: Record<string, string>): CSVDataRow {
+  if (!mapping || Object.keys(mapping).length === 0) {
+    return row;
+  }
+
+  const mappedRow: CSVDataRow = {};
+
+  for (const [csvColumn, value] of Object.entries(row)) {
+    // Use mapped name if defined, otherwise keep original column name
+    const variableName = mapping[csvColumn] || csvColumn;
+    mappedRow[variableName] = value;
+  }
+
+  return mappedRow;
 }
 
 export class CSVDataProvider {
@@ -77,7 +96,6 @@ export class CSVDataProvider {
       delimiter: this.config.delimiter || ',',
       skipEmptyLines: this.config.skipEmptyLines !== false,
       dynamicTyping: true,
-      transformHeader: (header: string) => header.trim(),
       delimitersToGuess: [',', '\t', '|', ';']
     };
 
@@ -139,18 +157,18 @@ export class CSVDataProvider {
       
       const row = this.originalData[this.globalIndex];
       this.globalIndex++;
-      
+
       logger.info(`📊 VU${vuId} using sequential CSV row ${this.globalIndex}/${this.originalData.length}:`, Object.keys(row));
-      
-      return { ...row };
+
+      return applyVariableMapping({ ...row }, this.config.variables);
     } else {
       // Normal round-robin behavior
       const index = (vuId - 1) % this.originalData.length;
       const row = this.originalData[index];
-      
+
       logger.debug(`📊 VU${vuId} using CSV row ${index + 1}/${this.originalData.length}:`, Object.keys(row));
-      
-      return { ...row };
+
+      return applyVariableMapping({ ...row }, this.config.variables);
     }
   }
 
@@ -171,9 +189,9 @@ export class CSVDataProvider {
     }
 
     const row = this.data.shift()!;
-    
+
     logger.info(`📊 VU${vuId} using unique CSV row (${this.data.length} remaining):`, Object.keys(row));
-    
+
     if (this.data.length === 0) {
       this.isExhausted = true;
       
@@ -190,7 +208,7 @@ export class CSVDataProvider {
       }
     }
 
-    return { ...row };
+    return applyVariableMapping({ ...row }, this.config.variables);
   }
 
   /**
@@ -198,7 +216,7 @@ export class CSVDataProvider {
    */
   async getRandomRow(vuId: number = 0): Promise<CSVDataRow | null> {
     await this.loadData();
-    
+
     if (this.originalData.length === 0) {
       logger.warn(`📊 No data available for random selection in CSV: ${this.config.file}`);
       return null;
@@ -207,7 +225,7 @@ export class CSVDataProvider {
     // If cycling is disabled, track accesses and stop after using all data once
     if (this.config.cycleOnExhaustion === false) {
       this.accessCount++;
-      
+
       if (this.accessCount > this.originalData.length) {
         logger.warn(`📊 VU${vuId}: CSV data exhausted in file: ${this.config.file} (random mode, cycling disabled, ${this.accessCount} accesses)`);
         return null; // Just return null, don't terminate test
@@ -216,32 +234,9 @@ export class CSVDataProvider {
 
     const randomIndex = Math.floor(Math.random() * this.originalData.length);
     const row = this.originalData[randomIndex];
-    
+
     logger.debug(`📊 VU${vuId} using random CSV row ${randomIndex + 1}/${this.originalData.length} (access ${this.accessCount}):`, Object.keys(row));
-    return { ...row };
-  }
-
-  // ... rest of existing methods stay the same ...
-  async getAllRows(): Promise<CSVDataRow[]> {
-    await this.loadData();
-    return [...this.data];
-  }
-
-  async getRowCount(): Promise<number> {
-    await this.loadData();
-    return this.data.length;
-  }
-
-  isDataExhausted(): boolean {
-    return this.isExhausted && this.config.cycleOnExhaustion === false;
-  }
-
-  reset(): void {
-    this.data = [...this.originalData];
-    this.currentIndex = 0;
-    this.isExhausted = false;
-    this.globalIndex = 0;
-    this.accessCount = 0;
+    return applyVariableMapping({ ...row }, this.config.variables);
   }
 
   private filterData(data: CSVDataRow[], filterExpression: string): CSVDataRow[] {
@@ -301,8 +296,5 @@ export class CSVDataProvider {
     return shuffled;
   }
 
-  static clearInstances(): void {
-    CSVDataProvider.instances.clear();
-  }
 }
 

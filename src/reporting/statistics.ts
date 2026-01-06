@@ -99,6 +99,147 @@ export class StatisticsCalculator {
   }
 
   /**
+   * Calculate aggregated Core Web Vitals statistics
+   */
+  static calculateWebVitalsStatistics(results: TestResult[]): {
+    web_vitals_data?: any;
+    vitals_score?: 'good' | 'needs-improvement' | 'poor';
+    vitals_details?: any;
+  } {
+    const webVitalsResults = results.filter(r => r.custom_metrics?.web_vitals);
+    
+    if (webVitalsResults.length === 0) {
+      return {};
+    }
+
+    // Aggregate all Web Vitals metrics
+    const allVitals = {
+      lcp: [] as number[],
+      fid: [] as number[],
+      cls: [] as number[],
+      fcp: [] as number[],
+      ttfb: [] as number[],
+      tti: [] as number[],
+      tbt: [] as number[],
+      speedIndex: [] as number[]
+    };
+
+    // Collect all vitals data
+    webVitalsResults.forEach(result => {
+      const vitals = result.custom_metrics.web_vitals;
+      if (vitals.lcp) allVitals.lcp.push(vitals.lcp);
+      if (vitals.fid) allVitals.fid.push(vitals.fid);
+      if (vitals.cls) allVitals.cls.push(vitals.cls);
+      if (vitals.fcp) allVitals.fcp.push(vitals.fcp);
+      if (vitals.ttfb) allVitals.ttfb.push(vitals.ttfb);
+      if (vitals.tti) allVitals.tti.push(vitals.tti);
+      if (vitals.tbt) allVitals.tbt.push(vitals.tbt);
+      if (vitals.speedIndex) allVitals.speedIndex.push(vitals.speedIndex);
+    });
+
+    // Calculate averages for each metric
+    const avgVitals: any = {};
+    const vitalsDetails: any = {};
+    
+    Object.entries(allVitals).forEach(([metric, values]) => {
+      if (values.length > 0) {
+        const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+        avgVitals[metric] = Math.round(avg * 100) / 100;
+
+        // Determine score based on thresholds
+        let score: 'good' | 'needs-improvement' | 'poor' = 'good';
+        const thresholds = this.getWebVitalsThresholds(metric);
+        
+        if (thresholds) {
+          if (avg <= thresholds.good) {
+            score = 'good';
+          } else if (avg <= thresholds.poor) {
+            score = 'needs-improvement';
+          } else {
+            score = 'poor';
+          }
+        }
+
+        vitalsDetails[metric] = {
+          value: avgVitals[metric],
+          score: score
+        };
+      }
+    });
+
+    // Calculate overall score
+    const scores = Object.values(vitalsDetails).map((d: any) => d.score);
+    const goodCount = scores.filter(s => s === 'good').length;
+    const poorCount = scores.filter(s => s === 'poor').length;
+    const totalCount = scores.length;
+
+    let overallScore: 'good' | 'needs-improvement' | 'poor' = 'needs-improvement';
+    if (totalCount === 0) {
+      overallScore = 'needs-improvement';
+    } else if (goodCount >= totalCount * 0.75) {
+      overallScore = 'good';
+    } else if (poorCount > totalCount * 0.25) {
+      overallScore = 'poor';
+    }
+
+    return {
+      web_vitals_data: avgVitals,
+      vitals_score: overallScore,
+      vitals_details: vitalsDetails
+    };
+  }
+
+  /**
+   * Calculate verification metrics statistics
+   */
+  static calculateVerificationStatistics(results: TestResult[]): any {
+    const verificationResults = results.filter(r => r.custom_metrics?.verification_metrics);
+    
+    if (verificationResults.length === 0) {
+      return null;
+    }
+
+    const metrics = verificationResults.map(r => r.custom_metrics.verification_metrics);
+    const durations = metrics.map(m => m.duration);
+    const successfulMetrics = metrics.filter(m => m.success);
+
+    const sortedDurations = [...durations].sort((a, b) => a - b);
+    const avgDuration = durations.reduce((sum, d) => sum + d, 0) / durations.length;
+    const p95Duration = sortedDurations[Math.floor(sortedDurations.length * 0.95)];
+
+    return {
+      total_verifications: metrics.length,
+      success_rate: successfulMetrics.length / metrics.length,
+      average_duration: Math.round(avgDuration * 100) / 100,
+      p95_duration: p95Duration,
+      slowest_step: metrics.reduce((prev, current) => 
+        prev.duration > current.duration ? prev : current
+      ),
+      fastest_step: metrics.reduce((prev, current) => 
+        prev.duration < current.duration ? prev : current
+      )
+    };
+  }
+
+  /**
+   * Get Web Vitals thresholds for scoring
+   */
+  private static getWebVitalsThresholds(metric: string): { good: number; poor: number } | null {
+    const thresholds: Record<string, { good: number; poor: number }> = {
+      lcp: { good: 2500, poor: 4000 },
+      fid: { good: 100, poor: 300 },
+      cls: { good: 0.1, poor: 0.25 },
+      fcp: { good: 1800, poor: 3000 },
+      ttfb: { good: 800, poor: 1800 },
+      tti: { good: 3800, poor: 7300 },
+      tbt: { good: 200, poor: 600 },
+      speedIndex: { good: 3400, poor: 5800 }
+    };
+
+    return thresholds[metric] || null;
+  }
+
+  /**
    * Enhanced time-based grouping with configurable intervals
    */
   static groupResultsByTime(results: TestResult[], intervalMs: number = 5000): any[] {

@@ -5,13 +5,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ReportConfig, TestConfiguration } from './types';
 import { TemplateProcessor } from '../utils/template';
-import { CSVDataProvider } from '../core/csv-data-provider';
+import { CSVDataProvider } from '../core';
+import { logger } from '../utils/logger';
 
 export class ConfigParser {
   private templateProcessor = new TemplateProcessor();
 
   async parse(configPath: string, environment?: string): Promise<TestConfiguration> {
-    console.log('🔍 ConfigParser.parse called with:', configPath, environment);
+    logger.debug(`ConfigParser.parse called with: ${configPath}, ${environment}`);
 
     if (!fs.existsSync(configPath)) {
       throw new Error(`Configuration file not found: ${configPath}`);
@@ -31,12 +32,12 @@ export class ConfigParser {
       config = this.parseContent(configContent);
     }
 
-    console.log('🔍 Parsed config.global:', JSON.stringify(config.global, null, 2));
+    logger.debug(`Parsed config.global: ${JSON.stringify(config.global, null, 2)}`);
 
     // Setup faker configuration if specified
-    console.log('🔍 About to setup faker...');
+    logger.debug('About to setup faker...');
     this.setupFaker(config);
-    console.log('🔍 Faker setup completed');
+    logger.debug('Faker setup completed');
 
     // Setup base directories for CSV and templates if needed
     this.setupBaseDirectories(config, configPath);
@@ -69,16 +70,16 @@ export class ConfigParser {
         try {
           // Try to use ts-node/register for TypeScript support
           require('ts-node/register');
-        } catch (e) {
+        } catch {
           // If ts-node is not globally available, try to use it from local node_modules
           try {
             const tsNodePath = require.resolve('ts-node/register', { paths: [process.cwd()] });
             require(tsNodePath);
-          } catch (e2) {
+          } catch {
             // If ts-node still not found, provide helpful error
-            console.warn('⚠️  ts-node not found. Installing it will enable TypeScript imports.');
-            console.warn('   Install with: npm install --save-dev ts-node typescript');
-            console.warn('   Attempting to run as plain JavaScript...\n');
+            logger.warn('ts-node not found. Installing it will enable TypeScript imports.');
+            logger.warn('Install with: npm install --save-dev ts-node typescript');
+            logger.warn('Attempting to run as plain JavaScript...');
           }
         }
 
@@ -211,21 +212,21 @@ export class ConfigParser {
     if (hasCSVScenarios || hasTemplates) {
       CSVDataProvider.setBaseDir(baseDir);
       TemplateProcessor.setBaseDir(baseDir);
-      console.log(`Set base directory for CSV/templates: ${baseDir}`);
+      logger.debug(`Set base directory for CSV/templates: ${baseDir}`);
     }
   }
 
   private setupFaker(config: TestConfiguration): void {
-    console.log('🔍 ConfigParser.setupFaker called');
-    console.log('🔍 config.global:', JSON.stringify(config.global, null, 2));
+    logger.debug('ConfigParser.setupFaker called');
+    logger.debug(`config.global: ${JSON.stringify(config.global, null, 2)}`);
 
     if (config.global?.faker) {
-      console.log('🔍 Found faker config:', config.global.faker);
-      console.log('🔍 About to call configureFaker...');
+      logger.debug(`Found faker config: ${JSON.stringify(config.global.faker)}`);
+      logger.debug('About to call configureFaker...');
       this.templateProcessor.configureFaker(config.global.faker);
-      console.log('🔍 configureFaker call completed');
+      logger.debug('configureFaker call completed');
     } else {
-      console.log('🔍 No faker config found in global');
+      logger.debug('No faker config found in global');
     }
   }
 
@@ -281,7 +282,7 @@ export class ConfigParser {
     // Validate encoding if specified
     const validEncodings = ['utf8', 'utf-8', 'ascii', 'latin1', 'base64', 'hex'];
     if (csvConfig.encoding && !validEncodings.includes(csvConfig.encoding)) {
-      console.warn(`Warning: Encoding '${csvConfig.encoding}' may not be supported in scenario ${scenarioName}`);
+      logger.warn(`Encoding '${csvConfig.encoding}' may not be supported in scenario ${scenarioName}`);
     }
   }
 
@@ -334,12 +335,8 @@ export class ConfigParser {
     };
   }
 
-  processTemplates(config: TestConfiguration, context: Record<string, any>): TestConfiguration {
+  processTemplates(config: TestConfiguration, _context: { env: NodeJS.ProcessEnv; timestamp: number; datetime: string; }): TestConfiguration {
     const configStr = JSON.stringify(config);
     return JSON.parse(configStr);
-  }
-
-  getTemplateProcessor(): TemplateProcessor {
-    return this.templateProcessor;
   }
 }

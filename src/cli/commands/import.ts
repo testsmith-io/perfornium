@@ -11,9 +11,6 @@ import { OpenAPIImporter } from '../../importers/open-api-importer';
 import { WSDLImporter } from '../../importers/wsdl-importer';
 import { HARImporter } from '../../importers/har-importer';
 import {OutputFormat, TestOutputWriter} from "../../utils/test-output-writer";
-// import { PostmanImporter } from '../importers/postman-importer';
-// import { DataCorrelationAnalyzer } from '../importers/correlation-analyzer';
-// import { logger } from '../utils/logger';
 
 interface ImportOptions {
     output: string;
@@ -171,12 +168,12 @@ async function createOpenAPIImporter(sourceFile: string, options: ImportOptions)
     return new OpenAPIImporter(spec);
 }
 
-async function createWSDLImporter(sourceFile: string, options: ImportOptions): Promise<WSDLImporter> {
+async function createWSDLImporter(sourceFile: string, _options: ImportOptions): Promise<WSDLImporter> {
     const content = await fs.readFile(sourceFile, 'utf8');
     return new WSDLImporter(content);
 }
 
-async function createHARImporter(sourceFile: string, options: ImportOptions): Promise<HARImporter> {
+async function createHARImporter(sourceFile: string, _options: ImportOptions): Promise<HARImporter> {
     const content = await fs.readFile(sourceFile, 'utf8');
     const har = JSON.parse(content);
     return new HARImporter(har);
@@ -410,7 +407,7 @@ function extractServiceGroup(serviceName: string): string {
     return parts.length > 1 ? parts[0] : serviceName;
 }
 
-async function applyCorrelations(scenarios: Scenario[], options: ImportOptions): Promise<Scenario[]> {
+async function applyCorrelations(scenarios: Scenario[], _options: ImportOptions): Promise<Scenario[]> {
     // Note: DataCorrelationAnalyzer is not available, so we'll skip this functionality for now
     // You'll need to import and implement this class or remove this feature
     console.log(chalk.yellow('Data correlation analysis is not available - skipping'));
@@ -565,31 +562,10 @@ async function generateOutputFiles(
     }
 }
 
-async function getSafeFilename(filepath: string): Promise<string> {
-    try {
-        await fs.access(filepath);
-        // File exists, create numbered version
-        const ext = path.extname(filepath);
-        const base = filepath.slice(0, -ext.length);
-        let counter = 1;
-        let newPath: string;
-
-        do {
-            newPath = `${base}_${counter}${ext}`;
-            counter++;
-            try { await fs.access(newPath); } catch { break; }
-        } while (counter < 100);
-
-        return newPath;
-    } catch {
-        return filepath; // File doesn't exist, use original
-    }
-}
-
 async function ensureDirectory(dirPath: string): Promise<void> {
     try {
         await fs.mkdir(dirPath, { recursive: true });
-    } catch (error) {
+    } catch {
         // Directory might already exist
     }
 }

@@ -1,0 +1,5 @@
+* [Home](/)
+* [Quick Start](quick-start.md)
+* [Examples](examples/)
+* [API Reference](api/)
+* [GitHub](https://github.com/perfornium/perfornium)

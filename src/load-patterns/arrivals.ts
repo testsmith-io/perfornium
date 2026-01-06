@@ -1,7 +1,7 @@
 import { LoadPattern, VUFactory } from './base';
 import { parseTime, sleep } from '../utils/time';
 import { logger } from '../utils/logger';
-import { VirtualUser } from '../core/virtual-user';
+import { VirtualUser } from '../core';
 
 export class ArrivalsPattern implements LoadPattern {
   async execute(config: any, vuFactory: VUFactory): Promise<void> {
@@ -78,10 +78,14 @@ export class ArrivalsPattern implements LoadPattern {
     // Run VU creation and execution asynchronously to not block arrivals rate
     (async () => {
       try {
-        console.log(`🔧 Creating VU ${vuId}...`);
+        logger.debug(`Creating VU ${vuId}...`);
         const vu = await this.createVU(vuFactory, vuId);
-        console.log(`✅ VU ${vuId} ready`);
-        
+        logger.debug(`VU ${vuId} ready`);
+
+        // Record VU start for metrics and reporting
+        const metrics = vuFactory.getMetrics();
+        metrics.recordVUStart(vu.getId());
+
         logger.debug(`👤 Started VU ${vu.getId()}`);
         
         // Run VU for its individual duration

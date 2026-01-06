@@ -1,84 +1,8 @@
-import { 
+import {
   TestHooks, VUHooks, ScenarioHooks, LoopHooks, StepHooks, ScriptResult
 } from '../config/types/hooks';
 import { ScriptExecutor } from './script-executor';
-
-export class HooksManager {
-  private testHooks?: TestHooks;
-  private testName: string;
-  private testStartTime: number = 0;
-
-  constructor(testName: string, testHooks?: TestHooks) {
-    this.testName = testName;
-    this.testHooks = testHooks;
-  }
-
-  async executeBeforeTest(): Promise<ScriptResult | null> {
-    if (!this.testHooks?.beforeTest) return null;
-    
-    this.testStartTime = Date.now();
-    
-    const context = ScriptExecutor.createContext(
-      this.testName,
-      0,
-      {},
-      {},
-      undefined,
-      {
-        test_start_time: this.testStartTime
-      }
-    );
-
-    return await ScriptExecutor.executeHookScript(
-      this.testHooks.beforeTest,
-      context,
-      'beforeTest'
-    );
-  }
-
-  async executeOnTestError(error: Error): Promise<ScriptResult | null> {
-    if (!this.testHooks?.onTestError) return null;
-    
-    const context = ScriptExecutor.createContext(
-      this.testName,
-      0,
-      {},
-      {},
-      undefined,
-      {
-        error,
-        test_start_time: this.testStartTime
-      }
-    );
-
-    return await ScriptExecutor.executeHookScript(
-      this.testHooks.onTestError,
-      context,
-      'onTestError'
-    );
-  }
-
-  async executeTeardownTest(): Promise<ScriptResult | null> {
-    if (!this.testHooks?.teardownTest) return null;
-    
-    const context = ScriptExecutor.createContext(
-      this.testName,
-      0,
-      {},
-      {},
-      undefined,
-      {
-        test_start_time: this.testStartTime
-      }
-    );
-
-    return await ScriptExecutor.executeHookScript(
-      this.testHooks.teardownTest,
-      context,
-      'teardownTest'
-    );
-  }
-}
+import { logger } from '../utils/logger';
 
 export class VUHooksManager {
   private vuHooks?: VUHooks;
@@ -187,9 +111,9 @@ export class ScenarioHooksManager {
     
     // IMPORTANT: Also merge the context's extracted_data back into the main extracted_data
     Object.assign(extractedData, context.extracted_data);
-    
-    console.log(`🪝 VU${this.vuId}: beforeScenario extracted data:`, Object.keys(context.extracted_data));
-    console.log(`🪝 VU${this.vuId}: beforeScenario extracted values:`, context.extracted_data);
+
+    logger.debug(`VU${this.vuId}: beforeScenario extracted data: ${Object.keys(context.extracted_data).join(', ')}`);
+    logger.debug(`VU${this.vuId}: beforeScenario extracted values: ${JSON.stringify(context.extracted_data)}`);
   }
 
   return result;

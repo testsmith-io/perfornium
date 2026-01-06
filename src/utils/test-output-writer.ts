@@ -90,7 +90,6 @@ export class TestOutputWriter {
     // Fixed methods for TestOutputWriter class
 
     private generateTypeScriptDSL(): string {
-        const metadata = this.config.metadata || {};
         const sourceInfo = this.getSourceInfo();
 
         return `import { test, faker, testData } from '@perfornium/dsl';

@@ -23,6 +23,18 @@
             --border-color: #e5e7eb;
         }
 
+        [data-theme="dark"] {
+            --primary-color: #3b82f6;
+            --success-color: #10b981;
+            --warning-color: #fbbf24;
+            --error-color: #f87171;
+            --background-color: #111827;
+            --card-background: #1f2937;
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --border-color: #374151;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -50,6 +62,12 @@
             margin-bottom: 30px;
             text-align: center;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        [data-theme="dark"] .header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         }
 
         .header h1 {
@@ -61,6 +79,33 @@
         .header p {
             font-size: 1.1rem;
             opacity: 0.9;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50px;
+            padding: 8px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .theme-icon {
+            font-size: 1.2rem;
         }
 
         .summary-grid {
@@ -126,6 +171,10 @@
             background: #f9fafb;
         }
 
+        [data-theme="dark"] .section-header {
+            background: #1f2937;
+        }
+
         .section-title {
             font-size: 1.5rem;
             font-weight: 600;
@@ -177,8 +226,79 @@
             font-size: 0.75rem;
         }
 
+        [data-theme="dark"] .step-stats-table th {
+            background: #1f2937;
+        }
+
         .step-stats-table tr:hover {
             background: #f9fafb;
+        }
+
+        [data-theme="dark"] .step-stats-table tr:hover {
+            background: #374151;
+        }
+
+        /* Error Details Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 0.85rem;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 10px 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .data-table th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: var(--text-primary);
+            position: sticky;
+            top: 0;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+
+        [data-theme="dark"] .data-table th {
+            background: #1f2937;
+        }
+
+        .data-table tr:hover {
+            background: #fef9f9;
+        }
+
+        [data-theme="dark"] .data-table tr:hover {
+            background: #374151;
+        }
+
+        .data-table .url-cell,
+        .data-table .error-cell,
+        .data-table .response-body-cell {
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: help;
+        }
+
+        .data-table .error-cell {
+            color: var(--error-color);
+            font-weight: 500;
+        }
+
+        .data-table .response-body-cell {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .table-container {
+            overflow-x: auto;
+            margin-top: 15px;
         }
 
         .status-badge {
@@ -312,6 +432,147 @@
         .step-stats-table th:nth-child(n+5):nth-child(-n+13) {
             text-align: right;
         }
+
+        /* Core Web Vitals Styles */
+        .vitals-section {
+            margin-bottom: 30px;
+        }
+
+        .vitals-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .vitals-card {
+            background: var(--card-background);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid var(--border-color);
+            transition: transform 0.2s ease;
+        }
+
+        .vitals-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .vitals-card h3 {
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .vitals-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .vitals-good {
+            border-color: var(--success-color);
+        }
+
+        .vitals-good .vitals-value {
+            color: var(--success-color);
+        }
+
+        .vitals-warning {
+            border-color: var(--warning-color);
+        }
+
+        .vitals-warning .vitals-value {
+            color: var(--warning-color);
+        }
+
+        .vitals-poor {
+            border-color: var(--error-color);
+        }
+
+        .vitals-poor .vitals-value {
+            color: var(--error-color);
+        }
+
+        .vitals-unknown {
+            border-color: var(--text-secondary);
+        }
+
+        .vitals-unknown .vitals-value {
+            color: var(--text-secondary);
+        }
+
+        .vitals-score {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .vitals-score.vitals-good {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .vitals-score.vitals-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .vitals-score.vitals-poor {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .verification-metrics {
+            background: var(--card-background);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .verification-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .verification-stat {
+            text-align: center;
+        }
+
+        .verification-stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .verification-stat-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .vitals-cards {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 15px;
+            }
+
+            .vitals-value {
+                font-size: 1.5rem;
+            }
+
+            .verification-stats {
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                gap: 10px;
+            }
+        }
     </style>
 </head>
 
@@ -319,6 +580,10 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
+            <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+                <span class="theme-icon" id="themeIcon">🌙</span>
+                <span id="themeText">Dark Mode</span>
+            </button>
             <h1>{{testName}}</h1>
             <p>Enhanced Performance Test Report • Generated on {{generatedAt}}</p>
         </div>
@@ -395,6 +660,251 @@
             </div>
         </div>
 
+        <!-- Network Timing Analysis -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Network Timing Analysis</h2>
+            </div>
+            <div class="section-content">
+                <div class="grid-2">
+                    <div class="chart-container">
+                        <canvas id="connectTimeChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="latencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{#if errorAnalysis.errorDetails}}
+        {{#if errorAnalysis.errorDetails.length}}
+        <!-- Error Details Table -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Errors by Sample/Request</h2>
+                <div class="section-subtitle">
+                    Total Errors: <span class="metric-error">{{errorAnalysis.totalErrors}}</span>
+                    ({{errorAnalysis.errorRate}}% of all requests)
+                </div>
+            </div>
+            <div class="section-content">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Sample/Request</th>
+                                <th>Method</th>
+                                <th>URL</th>
+                                <th>Status</th>
+                                <th>Error Type</th>
+                                <th>Error Count</th>
+                                <th>Total Requests</th>
+                                <th>Error %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each errorAnalysis.errorDetails}}
+                            <tr>
+                                <td><strong>{{sample_name}}</strong></td>
+                                <td>{{request_method}}</td>
+                                <td class="url-cell" title="{{request_url}}">{{request_url}}</td>
+                                <td><span class="status-badge status-error">{{status}}</span></td>
+                                <td class="error-cell" title="{{error_type}}">{{error_type}}</td>
+                                <td>{{error_count}}</td>
+                                <td>{{total_sample_requests}}</td>
+                                <td><strong>{{percentage}}%</strong></td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+        {{/if}}
+
+        {{#if summary.web_vitals_data}}
+        <!-- Core Web Vitals Section -->
+        <div class="section vitals-section">
+            <div class="section-header">
+                <h2 class="section-title">Core Web Vitals Performance</h2>
+                <span class="vitals-score {{vitalsScoreClass summary.vitals_score}}">{{summary.vitals_score}}</span>
+            </div>
+            <div class="section-content">
+                <div class="vitals-cards">
+                    {{#if summary.web_vitals_data.lcp}}
+                    <div class="vitals-card {{vitalsScoreClass summary.vitals_details.lcp.score}}">
+                        <h3>LCP</h3>
+                        <div class="vitals-value">{{formatVitalsMetric summary.web_vitals_data.lcp 'lcp'}}</div>
+                        <div class="vitals-description">Largest Contentful Paint</div>
+                    </div>
+                    {{/if}}
+                    
+                    {{#if summary.web_vitals_data.cls}}
+                    <div class="vitals-card {{vitalsScoreClass summary.vitals_details.cls.score}}">
+                        <h3>CLS</h3>
+                        <div class="vitals-value">{{formatVitalsMetric summary.web_vitals_data.cls 'cls'}}</div>
+                        <div class="vitals-description">Cumulative Layout Shift</div>
+                    </div>
+                    {{/if}}
+                    
+                    {{#if summary.web_vitals_data.inp}}
+                    <div class="vitals-card {{vitalsScoreClass summary.vitals_details.inp.score}}">
+                        <h3>INP</h3>
+                        <div class="vitals-value">{{formatVitalsMetric summary.web_vitals_data.inp 'inp'}}</div>
+                        <div class="vitals-description">Interaction to Next Paint</div>
+                    </div>
+                    {{/if}}
+                    
+                    {{#if summary.web_vitals_data.ttfb}}
+                    <div class="vitals-card {{vitalsScoreClass summary.vitals_details.ttfb.score}}">
+                        <h3>TTFB</h3>
+                        <div class="vitals-value">{{formatVitalsMetric summary.web_vitals_data.ttfb 'ttfb'}}</div>
+                        <div class="vitals-description">Time to First Byte</div>
+                    </div>
+                    {{/if}}
+                    
+                    {{#if summary.web_vitals_data.fcp}}
+                    <div class="vitals-card {{vitalsScoreClass summary.vitals_details.fcp.score}}">
+                        <h3>FCP</h3>
+                        <div class="vitals-value">{{formatVitalsMetric summary.web_vitals_data.fcp 'fcp'}}</div>
+                        <div class="vitals-description">First Contentful Paint</div>
+                    </div>
+                    {{/if}}
+                </div>
+
+                <!-- Web Vitals Chart -->
+                <div class="chart-container">
+                    <canvas id="webVitalsChart"></canvas>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+        
+        {{#if webVitalsCharts}}
+        <!-- Enhanced Web Vitals Analysis (Playwright Tests) -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Web Vitals Detailed Analysis</h2>
+            </div>
+            <div class="section-content">
+                <!-- Score Distribution -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h3>Performance Score Distribution</h3>
+                        <div class="chart-container small">
+                            <canvas id="webVitalsScoreChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Combined Web Vitals Timeline -->
+                <div class="section-header" style="margin-top: 30px;">
+                    <h3>Web Vitals Timeline (All Metrics)</h3>
+                    <p style="color: #666; font-size: 14px;">Interactive timeline showing LCP, CLS, INP, TTFB, FCP, and FID values across all URLs</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="webVitalsTimelineChart"></canvas>
+                </div>
+                
+                <!-- Individual Metric Charts -->
+                <div class="metrics-grid" style="margin-top: 30px;">
+                    <!-- Time Series for Each Metric -->
+                    {{#each webVitalsCharts.metrics}}
+                    <div class="metric-card">
+                        <h3>{{this}} Over Time</h3>
+                        <div class="chart-container small">
+                            <canvas id="webVitals{{this}}Chart"></canvas>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+                
+                <!-- Percentile Distribution -->
+                <div class="section-header" style="margin-top: 30px;">
+                    <h3>Web Vitals Percentile Distribution</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="webVitalsPercentilesChart"></canvas>
+                </div>
+                
+                <!-- Page-by-Page Analysis -->
+                {{#if webVitalsCharts.pageAnalysis}}
+                <div class="section-header" style="margin-top: 30px;">
+                    <h3>Performance by Page</h3>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Page URL</th>
+                                <th>Measurements</th>
+                                <th>Avg Score</th>
+                                <th>LCP (ms)</th>
+                                <th>CLS</th>
+                                <th>INP (ms)</th>
+                                <th>TTFB (ms)</th>
+                                <th>FCP (ms)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each webVitalsCharts.pageAnalysis}}
+                            <tr>
+                                <td>{{this.url}}</td>
+                                <td>{{this.measurements}}</td>
+                                <td><span class="{{vitalsScoreClass this.avgScore}}">{{this.avgScore}}</span></td>
+                                <td>{{#if this.metrics.lcp}}{{formatVitalsMetric this.metrics.lcp.avg 'lcp'}}{{else}}-{{/if}}</td>
+                                <td>{{#if this.metrics.cls}}{{formatVitalsMetric this.metrics.cls.avg 'cls'}}{{else}}-{{/if}}</td>
+                                <td>{{#if this.metrics.inp}}{{formatVitalsMetric this.metrics.inp.avg 'inp'}}{{else}}-{{/if}}</td>
+                                <td>{{#if this.metrics.ttfb}}{{formatVitalsMetric this.metrics.ttfb.avg 'ttfb'}}{{else}}-{{/if}}</td>
+                                <td>{{#if this.metrics.fcp}}{{formatVitalsMetric this.metrics.fcp.avg 'fcp'}}{{else}}-{{/if}}</td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+        {{/if}}
+
+        {{#if summary.verification_metrics}}
+        <!-- Verification Metrics Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Verification Performance</h2>
+            </div>
+            <div class="section-content">
+                <div class="verification-metrics">
+                    <div class="verification-stats">
+                        <div class="verification-stat">
+                            <div class="verification-stat-value">{{summary.verification_metrics.total_verifications}}</div>
+                            <div class="verification-stat-label">Total Verifications</div>
+                        </div>
+                        <div class="verification-stat">
+                            <div class="verification-stat-value">{{percent summary.verification_metrics.success_rate 1}}</div>
+                            <div class="verification-stat-label">Success Rate</div>
+                        </div>
+                        <div class="verification-stat">
+                            <div class="verification-stat-value">{{formatVerificationDuration summary.verification_metrics.average_duration}}</div>
+                            <div class="verification-stat-label">Avg Duration</div>
+                        </div>
+                        <div class="verification-stat">
+                            <div class="verification-stat-value">{{formatVerificationDuration summary.verification_metrics.p95_duration}}</div>
+                            <div class="verification-stat-label">95th Percentile</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Verification Performance Chart -->
+                    <div class="chart-container" style="margin-top: 20px;">
+                        <canvas id="verificationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+
         <!-- Response Time Analysis -->
         <div class="section">
             <div class="section-header">
@@ -450,8 +960,8 @@
                             <th>Success Rate</th>
                             <th>Min (ms)</th>
                             <th>Avg (ms)</th>
+                            <th>Median (ms)</th>
                             <th>Max (ms)</th>
-                            <th>P50</th>
                             <th>P90</th>
                             <th>P95</th>
                             <th>P99</th>
@@ -469,8 +979,8 @@
                             <td>{{toFixed success_rate 1}}%</td>
                             <td>{{toFixed min_response_time 1}}</td>
                             <td>{{toFixed avg_response_time 1}}</td>
-                            <td>{{toFixed max_response_time 1}}</td>
                             <td>{{lookup percentiles 50}}</td>
+                            <td>{{toFixed max_response_time 1}}</td>
                             <td>{{lookup percentiles 90}}</td>
                             <td>{{lookup percentiles 95}}</td>
                             <td>{{lookup percentiles 99}}</td>
@@ -526,6 +1036,44 @@
     </div>
 
     <script>
+        // Theme toggle functionality
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+
+            // Update button text and icon
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+
+            if (newTheme === 'dark') {
+                themeIcon.textContent = '☀️';
+                themeText.textContent = 'Light Mode';
+            } else {
+                themeIcon.textContent = '🌙';
+                themeText.textContent = 'Dark Mode';
+            }
+        }
+
+        // Load theme from localStorage on page load
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            html.setAttribute('data-theme', savedTheme);
+
+            // Update button on load
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+
+            if (savedTheme === 'dark') {
+                themeIcon.textContent = '☀️';
+                themeText.textContent = 'Light Mode';
+            }
+        })();
+
         // Chart data from server
         const summaryData = {{{ summaryData }}};
         const stepStatistics = {{{ stepStatisticsData }}};
@@ -534,6 +1082,8 @@
         const responseTimeDistributionData = {{{ responseTimeDistributionData }}};
         const requestsPerSecondData = {{{ requestsPerSecondData }}};
         const responsesPerSecondData = {{{ responsesPerSecondData }}};
+        const connectTimeData = {{{ connectTimeData }}};
+        const latencyData = {{{ latencyData }}};
 
         // Tab functionality
         function showTab(tabName) {
@@ -737,16 +1287,16 @@
             }
         });
 
-        // VU Ramp-up Chart
+        // VU Ramp-up Chart - uses vuRampupData for accurate ramp-up visualization
         const vuRampupCtx = document.getElementById('vuRampupChart').getContext('2d');
         new Chart(vuRampupCtx, {
             type: 'line',
             data: {
                 datasets: [{
                     label: 'Active Virtual Users',
-                    data: timelineData.map(d => ({
+                    data: vuRampupData.map(d => ({
                         x: new Date(d.timestamp),
-                        y: d.active_vus
+                        y: d.count
                     })),
                     borderColor: '#2563eb',
                     backgroundColor: 'rgba(37, 99, 235, 0.1)',
@@ -913,61 +1463,95 @@
             }
         });
 
-        // Step Percentiles Chart
+        // Step Percentiles Chart - use horizontal bar for better readability
         const stepPercentilesCtx = document.getElementById('stepPercentilesChart').getContext('2d');
-        new Chart(stepPercentilesCtx, {
-            type: 'radar',
-            data: {
-                labels: ['P50', 'P90', 'P95', 'P99'],
-                datasets: stepStatistics.slice(0, 5).map((step, index) => ({
-                    label: step.step_name,
-                    data: [
-                        step.percentiles[50] || 0,
-                        step.percentiles[90] || 0,
-                        step.percentiles[95] || 0,
-                        step.percentiles[99] || 0
-                    ],
-                    borderColor: `hsl(${index * 72}, 70%, 50%)`,
-                    backgroundColor: `hsla(${index * 72}, 70%, 50%, 0.1)`,
-                    fill: true
-                }))
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Percentile Comparison (Top 5 Steps)'
+        if (stepStatistics && stepStatistics.length > 0) {
+            // Sort by P95 to show slowest steps first
+            const sortedSteps = [...stepStatistics].sort((a, b) =>
+                (b.percentiles[95] || 0) - (a.percentiles[95] || 0)
+            ).slice(0, 8); // Top 8 slowest steps
+
+            new Chart(stepPercentilesCtx, {
+                type: 'bar',
+                data: {
+                    labels: sortedSteps.map(s => s.step_name),
+                    datasets: [
+                        {
+                            label: 'P50',
+                            data: sortedSteps.map(s => s.percentiles[50] || 0),
+                            backgroundColor: 'rgba(37, 99, 235, 0.7)'
+                        },
+                        {
+                            label: 'P95',
+                            data: sortedSteps.map(s => s.percentiles[95] || 0),
+                            backgroundColor: 'rgba(245, 158, 11, 0.7)'
+                        },
+                        {
+                            label: 'P99',
+                            data: sortedSteps.map(s => s.percentiles[99] || 0),
+                            backgroundColor: 'rgba(239, 68, 68, 0.7)'
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Response Time Percentiles (Slowest Steps)'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Response Time (ms)'
+                            }
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         // Step Throughput Chart
         const stepThroughputCtx = document.getElementById('stepThroughputChart').getContext('2d');
-        new Chart(stepThroughputCtx, {
-            type: 'doughnut',
-            data: {
-                labels: stepStatistics.map(s => s.step_name),
-                datasets: [{
-                    data: stepStatistics.map(s => s.total_requests),
-                    backgroundColor: stepStatistics.map((_, index) =>
-                        `hsl(${index * 137.5 % 360}, 70%, 50%)`
-                    )
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Request Distribution by Step'
+        if (stepStatistics && stepStatistics.length > 0) {
+            new Chart(stepThroughputCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: stepStatistics.map(s => s.step_name),
+                    datasets: [{
+                        data: stepStatistics.map(s => s.total_requests),
+                        backgroundColor: stepStatistics.map((_, index) =>
+                            `hsl(${index * 137.5 % 360}, 70%, 50%)`
+                        )
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Request Distribution by Step'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${context.label}: ${value} requests (${percentage}%)`;
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         let stepLinesChart;
         const stepResponseTimes = {{{stepResponseTimesData}}};
@@ -978,35 +1562,39 @@
                 stepLinesChart.resetZoom();
             }
         }
-        
+
         // Create datasets - one line per step with ALL individual response times
-         const datasets = stepResponseTimes.map((step, index) => {
-            // Use timeline_data if available, otherwise simulate timestamps
-            const timelineData = step.timeline_data || step.response_times.map((responseTime, idx) => ({
+        // Use test start time from timeline data for fallback timestamps
+        const testStartTime = timelineData.length > 0 ? new Date(timelineData[0].timestamp).getTime() : Date.now();
+
+        const datasets = (stepResponseTimes || []).filter(step => step.response_times && step.response_times.length > 0).map((step, index) => {
+            // Use timeline_data if available, otherwise create timestamps relative to test start
+            const timelineDataPoints = step.timeline_data || step.response_times.map((responseTime, idx) => ({
                 duration: responseTime,
-                timestamp: Date.now() + (idx * 1000),
+                timestamp: testStartTime + (idx * 100), // 100ms intervals from test start
                 vu_id: Math.floor(idx / 10) + 1,
                 iteration: (idx % 10) + 1
             }));
-            
+
             return {
                 label: step.step_name,
-                data: timelineData.map(point => ({
+                data: timelineDataPoints.map(point => ({
                     x: new Date(point.timestamp),
                     y: point.duration
                 })),
-                borderColor: `hsl(${index * 360 / stepResponseTimes.length}, 70%, 50%)`,
-                backgroundColor: `hsla(${index * 360 / stepResponseTimes.length}, 70%, 50%, 0.1)`,
+                borderColor: `hsl(${index * 360 / Math.max(stepResponseTimes.length, 1)}, 70%, 50%)`,
+                backgroundColor: `hsla(${index * 360 / Math.max(stepResponseTimes.length, 1)}, 70%, 50%, 0.1)`,
                 fill: false,
                 tension: 0,
                 pointRadius: 2,
                 pointHoverRadius: 4,
                 borderWidth: 2,
-                pointBackgroundColor: `hsl(${index * 360 / stepResponseTimes.length}, 70%, 50%)`,
-                pointBorderColor: `hsl(${index * 360 / stepResponseTimes.length}, 70%, 40%)`
+                pointBackgroundColor: `hsl(${index * 360 / Math.max(stepResponseTimes.length, 1)}, 70%, 50%)`,
+                pointBorderColor: `hsl(${index * 360 / Math.max(stepResponseTimes.length, 1)}, 70%, 40%)`
             };
         });
 
+        if (datasets.length > 0) {
         stepLinesChart = new Chart(stepLinesCtx, {
             type: 'line',
             data: {
@@ -1119,9 +1707,11 @@
                 }
             }
         });
+        }
 
         // Performance Timeline Chart
         const performanceTimelineCtx = document.getElementById('performanceTimelineChart').getContext('2d');
+        if (timelineData && timelineData.length > 0) {
         new Chart(performanceTimelineCtx, {
             type: 'line',
             data: {
@@ -1130,7 +1720,7 @@
                         label: 'Active VUs',
                         data: timelineData.map(d => ({
                             x: new Date(d.timestamp),
-                            y: d.active_vus
+                            y: d.active_vus || 0
                         })),
                         borderColor: '#8b5cf6',
                         backgroundColor: 'rgba(139, 92, 246, 0.1)',
@@ -1202,12 +1792,21 @@
                     },
                     y2: {
                         type: 'linear',
-                        display: false,
-                        position: 'right'
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Active VUs'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                        beginAtZero: true
                     }
                 }
             }
         });
+        }
 
         // Response Distribution Chart (in tab)
         const responseDistributionCtx = document.getElementById('responseDistributionChart').getContext('2d');
@@ -1278,6 +1877,564 @@
                 }
             }
         });
+
+        // Core Web Vitals Chart
+        {{#if summary.web_vitals_data}}
+        const webVitalsCtx = document.getElementById('webVitalsChart')?.getContext('2d');
+        if (webVitalsCtx) {
+            const vitalsData = {
+                labels: [],
+                values: [],
+                thresholds: [],
+                colors: []
+            };
+
+            {{#if summary.web_vitals_data.lcp}}
+            vitalsData.labels.push('LCP');
+            vitalsData.values.push({{summary.web_vitals_data.lcp}});
+            vitalsData.thresholds.push([2500, 4000]);
+            vitalsData.colors.push('{{#ifEquals summary.vitals_details.lcp.score "good"}}#10b981{{else}}{{#ifEquals summary.vitals_details.lcp.score "needs-improvement"}}#f59e0b{{else}}#ef4444{{/ifEquals}}{{/ifEquals}}');
+            {{/if}}
+
+            {{#if summary.web_vitals_data.cls}}
+            vitalsData.labels.push('CLS');
+            vitalsData.values.push({{summary.web_vitals_data.cls}});
+            vitalsData.thresholds.push([0.1, 0.25]);
+            vitalsData.colors.push('{{#ifEquals summary.vitals_details.cls.score "good"}}#10b981{{else}}{{#ifEquals summary.vitals_details.cls.score "needs-improvement"}}#f59e0b{{else}}#ef4444{{/ifEquals}}{{/ifEquals}}');
+            {{/if}}
+
+            {{#if summary.web_vitals_data.inp}}
+            vitalsData.labels.push('INP');
+            vitalsData.values.push({{summary.web_vitals_data.inp}});
+            vitalsData.thresholds.push([200, 500]);
+            vitalsData.colors.push('{{#ifEquals summary.vitals_details.inp.score "good"}}#10b981{{else}}{{#ifEquals summary.vitals_details.inp.score "needs-improvement"}}#f59e0b{{else}}#ef4444{{/ifEquals}}{{/ifEquals}}');
+            {{/if}}
+
+            {{#if summary.web_vitals_data.fid}}
+            vitalsData.labels.push('FID (deprecated)');
+            vitalsData.values.push({{summary.web_vitals_data.fid}});
+            vitalsData.thresholds.push([100, 300]);
+            vitalsData.colors.push('{{#ifEquals summary.vitals_details.fid.score "good"}}#10b981{{else}}{{#ifEquals summary.vitals_details.fid.score "needs-improvement"}}#f59e0b{{else}}#ef4444{{/ifEquals}}{{/ifEquals}}');
+            {{/if}}
+
+            {{#if summary.web_vitals_data.fcp}}
+            vitalsData.labels.push('FCP');
+            vitalsData.values.push({{summary.web_vitals_data.fcp}});
+            vitalsData.thresholds.push([1800, 3000]);
+            vitalsData.colors.push('{{#ifEquals summary.vitals_details.fcp.score "good"}}#10b981{{else}}{{#ifEquals summary.vitals_details.fcp.score "needs-improvement"}}#f59e0b{{else}}#ef4444{{/ifEquals}}{{/ifEquals}}');
+            {{/if}}
+
+            {{#if summary.web_vitals_data.ttfb}}
+            vitalsData.labels.push('TTFB');
+            vitalsData.values.push({{summary.web_vitals_data.ttfb}});
+            vitalsData.thresholds.push([800, 1800]);
+            vitalsData.colors.push('{{#ifEquals summary.vitals_details.ttfb.score "good"}}#10b981{{else}}{{#ifEquals summary.vitals_details.ttfb.score "needs-improvement"}}#f59e0b{{else}}#ef4444{{/ifEquals}}{{/ifEquals}}');
+            {{/if}}
+
+            new Chart(webVitalsCtx, {
+                type: 'bar',
+                data: {
+                    labels: vitalsData.labels,
+                    datasets: [{
+                        label: 'Measured Value',
+                        data: vitalsData.values,
+                        backgroundColor: vitalsData.colors,
+                        borderColor: vitalsData.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Core Web Vitals Performance',
+                            font: { size: 16 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const thresholds = vitalsData.thresholds[context.dataIndex];
+                                    if (thresholds) {
+                                        return [
+                                            `Good: ≤ ${thresholds[0]}${context.label === 'CLS' ? '' : 'ms'}`,
+                                            `Poor: > ${thresholds[1]}${context.label === 'CLS' ? '' : 'ms'}`
+                                        ];
+                                    }
+                                    return '';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Value (ms / ratio)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Core Web Vitals Metrics'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        {{/if}}
+        
+        // Enhanced Web Vitals Charts for Playwright Tests
+        {{#if webVitalsCharts}}
+        // Score Distribution Pie Chart
+        const scoreCtx = document.getElementById('webVitalsScoreChart')?.getContext('2d');
+        if (scoreCtx) {
+            new Chart(scoreCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Good', 'Needs Improvement', 'Poor'],
+                    datasets: [{
+                        data: [
+                            {{webVitalsCharts.scoreDistribution.good}},
+                            {{webVitalsCharts.scoreDistribution.needsImprovement}},
+                            {{webVitalsCharts.scoreDistribution.poor}}
+                        ],
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+        
+        // Combined Web Vitals Timeline Chart
+        const timelineCtx = document.getElementById('webVitalsTimelineChart')?.getContext('2d');
+        if (timelineCtx && {{json webVitalsCharts.timeSeries}} && {{json webVitalsCharts.timeSeries}}.unified) {
+            const timeSeries = {{json webVitalsCharts.timeSeries}};
+            const unifiedData = timeSeries.unified;
+            const metrics = ['lcp', 'cls', 'inp', 'ttfb', 'fcp', 'fid'];
+            const metricsConfig = {
+                lcp: { label: 'LCP', color: '#FF6B6B', yAxisID: 'y' },
+                cls: { label: 'CLS', color: '#45B7D1', yAxisID: 'y1' },
+                inp: { label: 'INP', color: '#4ECDC4', yAxisID: 'y' },
+                ttfb: { label: 'TTFB', color: '#FECA57', yAxisID: 'y' },
+                fcp: { label: 'FCP', color: '#96CEB4', yAxisID: 'y' },
+                fid: { label: 'FID', color: '#9370DB', yAxisID: 'y' }
+            };
+            
+            // Create datasets for available metrics using unified data
+            const datasets = [];
+            metrics.forEach(metric => {
+                if (unifiedData.data[metric] && unifiedData.data[metric].some(v => v !== null)) {
+                    const config = metricsConfig[metric];
+                    datasets.push({
+                        label: config.label,
+                        data: unifiedData.data[metric],
+                        borderColor: config.color,
+                        backgroundColor: config.color + '20',
+                        tension: 0.1,
+                        yAxisID: config.yAxisID,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        spanGaps: true // Connect lines across null values
+                    });
+                }
+            });
+            
+            const labels = unifiedData.labels;
+            
+            new Chart(timelineCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 6
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const metric = context.dataset.label.toLowerCase();
+                                    const value = context.parsed.y;
+                                    if (metric === 'cls') {
+                                        return `${context.dataset.label}: ${value.toFixed(3)}`;
+                                    } else if (value < 1000) {
+                                        return `${context.dataset.label}: ${Math.round(value)}ms`;
+                                    } else {
+                                        return `${context.dataset.label}: ${(value / 1000).toFixed(2)}s`;
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Time (ms)'
+                            },
+                            beginAtZero: true
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'CLS Score'
+                            },
+                            max: 1,
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Time Series Charts for Each Metric
+        {{#each webVitalsCharts.metrics}}
+        const {{this}}Ctx = document.getElementById('webVitals{{this}}Chart')?.getContext('2d');
+        if ({{this}}Ctx && {{json ../webVitalsCharts.timeSeries}}.{{this}}) {
+            const timeSeriesData = {{json ../webVitalsCharts.timeSeries}}.{{this}};
+            new Chart({{this}}Ctx, {
+                type: 'line',
+                data: {
+                    labels: timeSeriesData.labels,
+                    datasets: [{
+                        label: '{{this}}',
+                        data: timeSeriesData.data,
+                        borderColor: timeSeriesData.borderColor,
+                        backgroundColor: timeSeriesData.backgroundColor + '20',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '{{#ifEquals this "cls"}}Score{{else}}ms{{/ifEquals}}'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        {{/each}}
+        
+        // Percentiles Chart
+        const percentilesCtx = document.getElementById('webVitalsPercentilesChart')?.getContext('2d');
+        if (percentilesCtx && {{json webVitalsCharts.distributions}}) {
+            const distributions = {{json webVitalsCharts.distributions}};
+            const metrics = Object.keys(distributions);
+            const datasets = [
+                {
+                    label: 'P50 (Median)',
+                    data: metrics.map(m => distributions[m]?.median || 0),
+                    backgroundColor: '#4ECDC4'
+                },
+                {
+                    label: 'P75',
+                    data: metrics.map(m => distributions[m]?.p75 || 0),
+                    backgroundColor: '#45B7D1'
+                },
+                {
+                    label: 'P90',
+                    data: metrics.map(m => distributions[m]?.p90 || 0),
+                    backgroundColor: '#FECA57'
+                },
+                {
+                    label: 'P95',
+                    data: metrics.map(m => distributions[m]?.p95 || 0),
+                    backgroundColor: '#FF6B6B'
+                },
+                {
+                    label: 'P99',
+                    data: metrics.map(m => distributions[m]?.p99 || 0),
+                    backgroundColor: '#C44569'
+                }
+            ];
+            
+            new Chart(percentilesCtx, {
+                type: 'bar',
+                data: {
+                    labels: metrics.map(m => m.toUpperCase()),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: {
+                            display: true,
+                            text: 'Web Vitals Percentile Distribution'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            type: 'logarithmic',
+                            title: {
+                                display: true,
+                                text: 'Value (log scale)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        {{/if}}
+
+        // Verification Performance Chart
+        {{#if summary.verification_metrics}}
+        const verificationCtx = document.getElementById('verificationChart')?.getContext('2d');
+        if (verificationCtx && {{json results}}) {
+            const verificationData = {{json results}}.filter(r => r.custom_metrics?.verification_metrics)
+                .map(r => ({
+                    timestamp: r.timestamp,
+                    duration: r.custom_metrics.verification_metrics.duration,
+                    success: r.custom_metrics.verification_metrics.success,
+                    stepName: r.custom_metrics.verification_metrics.step_name || 'Unknown'
+                }));
+
+            new Chart(verificationCtx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Successful Verifications',
+                        data: verificationData.filter(d => d.success).map(d => ({
+                            x: d.timestamp,
+                            y: d.duration
+                        })),
+                        backgroundColor: '#10b981',
+                        borderColor: '#10b981',
+                        pointRadius: 4
+                    }, {
+                        label: 'Failed Verifications',
+                        data: verificationData.filter(d => !d.success).map(d => ({
+                            x: d.timestamp,
+                            y: d.duration
+                        })),
+                        backgroundColor: '#ef4444',
+                        borderColor: '#ef4444',
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Verification Step Performance Over Time',
+                            font: { size: 16 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return new Date(context[0].parsed.x).toLocaleTimeString();
+                                },
+                                label: function(context) {
+                                    const point = verificationData[context.dataIndex];
+                                    return [
+                                        `Duration: ${Math.round(context.parsed.y)}ms`,
+                                        `Step: ${point?.stepName || 'Unknown'}`,
+                                        `Status: ${point?.success ? 'Success' : 'Failed'}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Duration (ms)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        {{/if}}
+
+        // Connect Time Over Time Chart
+        if (connectTimeData && connectTimeData.length > 0) {
+            const connectTimeCtx = document.getElementById('connectTimeChart').getContext('2d');
+            new Chart(connectTimeCtx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Avg Connect Time (ms)',
+                        data: connectTimeData.map(d => ({
+                            x: d.timestamp,
+                            y: d.avg_connect_time
+                        })),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'TCP Connection Time Over Time',
+                            font: { size: 16 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return new Date(context[0].parsed.x).toLocaleTimeString();
+                                },
+                                label: function(context) {
+                                    return `Connect Time: ${Math.round(context.parsed.y)}ms`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                displayFormats: {
+                                    second: 'HH:mm:ss'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Connect Time (ms)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Latency Over Time Chart
+        if (latencyData && latencyData.length > 0) {
+            const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+            new Chart(latencyCtx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Avg Latency / TTFB (ms)',
+                        data: latencyData.map(d => ({
+                            x: d.timestamp,
+                            y: d.avg_latency
+                        })),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Latency (Time to First Byte) Over Time',
+                            font: { size: 16 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return new Date(context[0].parsed.x).toLocaleTimeString();
+                                },
+                                label: function(context) {
+                                    return `Latency: ${Math.round(context.parsed.y)}ms`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                displayFormats: {
+                                    second: 'HH:mm:ss'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Latency (ms)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
     </script>
 </body>
 

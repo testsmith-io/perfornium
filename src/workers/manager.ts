@@ -41,7 +41,9 @@ export class WorkerManager extends EventEmitter {
       throw new Error('No workers available for distributed testing');
     }
 
-    const totalVUs = config.load.virtual_users || 1;
+    const { getPrimaryLoadPhase } = require('../config/types/load-config');
+    const primaryPhase = getPrimaryLoadPhase(config.load);
+    const totalVUs = primaryPhase.virtual_users || primaryPhase.vus || 1;
     const vusPerWorker = Math.ceil(totalVUs / this.workers.length);
     
     logger.info(`🔄 Distributing ${totalVUs} VUs across ${this.workers.length} workers`);

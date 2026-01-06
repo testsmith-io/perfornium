@@ -19,9 +19,11 @@ export async function initCommand(
       'tests/mixed',
       'config/environments',
       'scripts',
-      'results',
-      'reports',
-      'screenshots'
+      'data',              // CSV and test data files
+      'payloads',          // JSON/XML payload templates for API tests
+      'results',           // Test results (JSON, CSV)
+      'results/screenshots', // Screenshots from web tests
+      'reports'            // HTML reports
     ];
     
     dirs.forEach(dir => {
@@ -43,7 +45,11 @@ export async function initCommand(
         'test:mixed': 'perfornium run tests/mixed/',
         'validate': 'perfornium validate',
         'record': 'perfornium record',
-        'report': 'perfornium report'
+        'report': 'perfornium report',
+        'worker': 'perfornium worker',
+        'worker:8080': 'perfornium worker --port 8080',
+        'worker:8081': 'perfornium worker --port 8081',
+        'distributed': 'perfornium distributed --workers-file config/workers.json'
       },
       devDependencies: {
         perfornium: '^1.0.0'
@@ -62,7 +68,6 @@ export async function initCommand(
     const gitignore = `node_modules/
 results/
 reports/
-screenshots/
 *.log
 .env
 .DS_Store
@@ -225,7 +230,7 @@ scenarios:
         action:
           command: "screenshot"
           options:
-            path: "screenshots/example-{{__VU}}-{{timestamp}}.png"
+            path: "results/screenshots/example-{{__VU}}-{{timestamp}}.png"
 
       - name: "wait_and_verify"
         type: "web"
@@ -317,63 +322,149 @@ report:
   fs.writeFileSync(path.join(projectDir, 'tests/web/web-example.yml'), webExampleAdvanced);
   fs.writeFileSync(path.join(projectDir, 'tests/mixed/mixed-example.yml'), mixedExample);
   
-  // Create example script
-  const exampleScript = `// Example custom script for data generation
-// This file can be used with custom steps in your test scenarios
+  // Create example TypeScript script
+  const exampleScript = `// Example TypeScript helpers for performance tests
+// Use with type: "script" steps in your test scenarios
 
-function generateTestData(context) {
+interface ScriptParams {
+  __context?: any;
+  __variables?: Record<string, any>;
+  __extracted_data?: Record<string, any>;
+  __vu_id?: number;
+  __iteration?: number;
+  [key: string]: any;
+}
+
+/**
+ * Generate test user data
+ * Usage in YAML:
+ *   - type: "script"
+ *     file: "scripts/helpers.ts"
+ *     function: "generateUsers"
+ *     params:
+ *       count: 5
+ *       prefix: "user"
+ *     returns: "users"
+ */
+export function generateUsers(params: ScriptParams) {
+  const count = params.count || 1;
+  const prefix = params.prefix || 'user';
+
   return {
-    timestamp: Date.now(),
-    userId: context.vu_id,
-    testData: \`test-data-\${Date.now()}\`
+    users: Array.from({ length: count }, (_, i) => ({
+      id: \`\${prefix}-\${i + 1}\`,
+      name: \`Test User \${i + 1}\`,
+      email: \`\${prefix}\${i + 1}@example.com\`
+    })),
+    generatedAt: new Date().toISOString(),
+    vuId: params.__vu_id,
+    iteration: params.__iteration
   };
 }
 
-function validateResponse(response, context) {
-  if (!response || !response.data) {
-    throw new Error('Invalid response structure');
+/**
+ * Calculate total from items array
+ * Usage in YAML:
+ *   - type: "script"
+ *     file: "scripts/helpers.ts"
+ *     function: "calculateTotal"
+ *     params:
+ *       items: [{ price: 10 }, { price: 20 }]
+ *     returns: "totals"
+ */
+export function calculateTotal(params: ScriptParams) {
+  const items = params.items || [];
+  const total = items.reduce((sum: number, item: any) => sum + (item.price || 0), 0);
+
+  return {
+    total,
+    itemCount: items.length,
+    average: items.length > 0 ? total / items.length : 0
+  };
+}
+
+/**
+ * Validate API response
+ */
+export function validateResponse(params: ScriptParams) {
+  const response = params.response;
+  const expectedStatus = params.expectedStatus || 'ok';
+
+  if (!response) {
+    return { valid: false, error: 'No response provided' };
   }
-  
+
   return {
-    isValid: true,
-    responseSize: JSON.stringify(response.data).length
+    valid: response.status === expectedStatus,
+    status: response.status
   };
 }
-
-module.exports = {
-  generateTestData,
-  validateResponse
-};
 `;
 
-  fs.writeFileSync(path.join(projectDir, 'scripts/example-helpers.js'), exampleScript);
+  fs.writeFileSync(path.join(projectDir, 'scripts/helpers.ts'), exampleScript);
   
   logger.info('✅ Example files created');
 }
 
 function createBasicTemplate(projectDir: string): void {
-  const basicTest = `name: "Sample Performance Test"
-description: "Basic performance test template"
+  // Simple working test against local mock server
+  const basicTest = `name: "API Health Check"
+description: "Simple API status check against local mock server"
 
 global:
-  base_url: "https://jsonplaceholder.typicode.com"
-  timeout: 30
+  base_url: "http://localhost:3000"
+  timeout: 30000
+
+load:
+  pattern: basic
+  virtual_users: 10
+  ramp_up: 10s
+
+scenarios:
+  - name: "health_check"
+    loop: 1
+    steps:
+      - name: "check_status"
+        type: "rest"
+        method: "GET"
+        path: "/status"
+        checks:
+          - type: "status"
+            value: 200
+
+outputs:
+  - type: "json"
+    file: "results/health-check.json"
+
+report:
+  generate: true
+  output: "reports/health-check-report.html"
+`;
+
+  // Load test against local mock server
+  const loadTest = `name: "Sample Load Test"
+description: "Load test against local mock server"
+
+# First start the mock server: perfornium mock
+global:
+  base_url: "http://localhost:3000"
+  timeout: 30000
 
 load:
   pattern: "basic"
-  virtual_users: 10
-  ramp_up: "30s"
-  duration: "2m"
+  virtual_users: 5
+  ramp_up: "10s"
+  duration: "30s"
 
 scenarios:
   - name: "api_requests"
     weight: 100
     loop: 3
     steps:
-      - name: "get_posts"
+      - name: "get_users"
         type: "rest"
         method: "GET"
-        path: "/posts"
+        path: "/users"
         checks:
           - type: "status"
             value: 200
@@ -381,24 +472,429 @@ scenarios:
             value: 1000
             operator: "lt"
 
-      - name: "get_specific_post"
+      - name: "get_products"
         type: "rest"
         method: "GET"
-        path: "/posts/1"
+        path: "/products"
+        checks:
+          - type: "status"
+            value: 200
+
+      - name: "get_random"
+        type: "rest"
+        method: "GET"
+        path: "/random"
         checks:
           - type: "status"
             value: 200
 
 outputs:
   - type: "json"
-    file: "results/sample-test-{{timestamp}}.json"
+    file: "results/load-test.json"
 
 report:
   generate: true
-  output: "reports/sample-test-report.html"
+  output: "reports/load-test-report.html"
 `;
-  
+
+  // Create sample CSV data file
+  const sampleCSV = `username,password,email
+user1,pass123,user1@example.com
+user2,pass456,user2@example.com
+user3,pass789,user3@example.com
+`;
+
+  // Script test example - demonstrates calling TypeScript functions
+  const scriptTest = `name: "Script Step Example"
+description: "Demonstrates calling TypeScript functions from tests"
+
+global:
+  base_url: "http://localhost:3000"
+  timeout: 30000
+
+load:
+  pattern: basic
+  virtual_users: 2
+  ramp_up: 2s
+
+scenarios:
+  - name: "script_workflow"
+    loop: 1
+    steps:
+      # Call TypeScript function to generate test data
+      - name: "generate_users"
+        type: "script"
+        file: "scripts/helpers.ts"
+        function: "generateUsers"
+        params:
+          count: 3
+          prefix: "test"
+        returns: "user_data"
+
+      # Use API endpoint
+      - name: "check_status"
+        type: "rest"
+        method: "GET"
+        path: "/status"
+        checks:
+          - type: "status"
+            value: 200
+
+      # Call another TypeScript function
+      - name: "calculate_prices"
+        type: "script"
+        file: "scripts/helpers.ts"
+        function: "calculateTotal"
+        params:
+          items:
+            - name: "Item 1"
+              price: 10.50
+            - name: "Item 2"
+              price: 25.00
+        returns: "price_data"
+
+outputs:
+  - type: "json"
+    file: "results/script-test.json"
+`;
+
+  // TypeScript helper script
+  const helperScript = `// TypeScript helpers for performance tests
+// Use with type: "script" steps in your test scenarios
+
+interface ScriptParams {
+  __context?: any;
+  __variables?: Record<string, any>;
+  __extracted_data?: Record<string, any>;
+  __vu_id?: number;
+  __iteration?: number;
+  [key: string]: any;
+}
+
+/**
+ * Generate test user data
+ */
+export function generateUsers(params: ScriptParams) {
+  const count = params.count || 1;
+  const prefix = params.prefix || 'user';
+
+  return {
+    users: Array.from({ length: count }, (_, i) => ({
+      id: \`\${prefix}-\${i + 1}\`,
+      name: \`Test User \${i + 1}\`,
+      email: \`\${prefix}\${i + 1}@example.com\`
+    })),
+    generatedAt: new Date().toISOString(),
+    vuId: params.__vu_id,
+    iteration: params.__iteration
+  };
+}
+
+/**
+ * Calculate total from items array
+ */
+export function calculateTotal(params: ScriptParams) {
+  const items = params.items || [];
+  const total = items.reduce((sum: number, item: any) => sum + (item.price || 0), 0);
+
+  return {
+    total,
+    itemCount: items.length,
+    average: items.length > 0 ? total / items.length : 0
+  };
+}
+
+/**
+ * Validate API response
+ */
+export function validateResponse(params: ScriptParams) {
+  const response = params.response;
+  const expectedStatus = params.expectedStatus || 'ok';
+
+  if (!response) {
+    return { valid: false, error: 'No response provided' };
+  }
+
+  return {
+    valid: response.status === expectedStatus,
+    status: response.status
+  };
+}
+`;
+
+  // JSON payload file example - create-user.json
+  const createUserPayload = `{
+  "name": "Default User",
+  "email": "default@example.com",
+  "age": 25,
+  "role": "user",
+  "profile": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "bio": "Default bio text"
+  },
+  "settings": {
+    "notifications": true,
+    "theme": "light"
+  }
+}
+`;
+
+  // JSON payload file example - update-user.json
+  const updateUserPayload = `{
+  "name": "Updated Name",
+  "profile": {
+    "bio": "Updated bio"
+  },
+  "settings": {
+    "theme": "dark"
+  }
+}
+`;
+
+  // Templating example test - demonstrates jsonFile with overrides
+  const templatingTest = `name: "Payload Templating Example"
+description: "Demonstrates loading JSON payloads from files with dynamic overrides"
+
+# This test shows how to:
+# 1. Load request payloads from external JSON files
+# 2. Override specific values using variables, faker, and extracted data
+# 3. Use dot notation to override nested properties
+
+global:
+  base_url: "http://localhost:3000"
+  timeout: 30000
+
+load:
+  pattern: basic
+  virtual_users: 2
+  ramp_up: 5s
+
+scenarios:
+  - name: "payload_templating"
+    loop: 1
+    variables:
+      default_role: "tester"
+    steps:
+      # Example 1: Load JSON file and override with faker data
+      - name: "create_user_with_faker"
+        type: "rest"
+        method: "POST"
+        path: "/users"
+        jsonFile: "payloads/create-user.json"
+        overrides:
+          name: "{{faker.person.fullName}}"
+          email: "{{faker.internet.email}}"
+          profile.firstName: "{{faker.person.firstName}}"
+          profile.lastName: "{{faker.person.lastName}}"
+        checks:
+          - type: "status"
+            value: 200
+        extract:
+          - name: "created_user_id"
+            type: "json_path"
+            expression: "$.id"
+            default: "1"
+
+      # Example 2: Override with variables and VU context
+      - name: "create_user_with_variables"
+        type: "rest"
+        method: "POST"
+        path: "/users"
+        jsonFile: "payloads/create-user.json"
+        overrides:
+          name: "Test User VU{{__VU}}"
+          email: "vu{{__VU}}-iter{{__ITER}}@test.com"
+          role: "{{default_role}}"
+          age: 30
+          settings.notifications: false
+        checks:
+          - type: "status"
+            value: 200
+
+      # Example 3: Use extracted data in overrides
+      - name: "update_created_user"
+        type: "rest"
+        method: "PUT"
+        path: "/users/{{created_user_id}}"
+        jsonFile: "payloads/update-user.json"
+        overrides:
+          name: "Updated by VU{{__VU}}"
+          profile.bio: "Updated at iteration {{__ITER}}"
+        checks:
+          - type: "status"
+            value: 200
+
+      # Example 4: Simple JSON without file (for comparison)
+      - name: "inline_json_example"
+        type: "rest"
+        method: "POST"
+        path: "/users"
+        json:
+          name: "{{faker.person.fullName}}"
+          email: "{{faker.internet.email}}"
+        checks:
+          - type: "status"
+            value: 200
+
+outputs:
+  - type: "json"
+    file: "results/templating-test.json"
+
+report:
+  generate: true
+  output: "reports/templating-test-report.html"
+`;
+
+  // Faker example test - demonstrates dynamic data generation
+  const fakerTest = `name: "Faker Data Generation Example"
+description: "Demonstrates using faker to generate realistic test data"
+
+# Faker is lazily loaded - only initialized when faker expressions are used
+# This keeps startup fast for tests that don't need dynamic data
+
+global:
+  base_url: "http://localhost:3000"
+  timeout: 30000
+  # Optional: Configure faker locale (en, de, fr, es, nl)
+  # faker:
+  #   locale: "en"
+  #   seed: 12345  # Optional: for reproducible data
+
+load:
+  pattern: basic
+  virtual_users: 3
+  ramp_up: 5s
+  duration: 30s
+
+scenarios:
+  - name: "user_registration"
+    weight: 100
+    loop: 2
+    steps:
+      # Create user with fully random data
+      - name: "register_new_user"
+        type: "rest"
+        method: "POST"
+        path: "/users"
+        json:
+          # Person data
+          firstName: "{{faker.person.firstName}}"
+          lastName: "{{faker.person.lastName}}"
+          fullName: "{{faker.person.fullName}}"
+          jobTitle: "{{faker.person.jobTitle}}"
+
+          # Contact info
+          email: "{{faker.internet.email}}"
+          phone: "{{faker.phone.number}}"
+
+          # Address
+          address:
+            street: "{{faker.location.streetAddress}}"
+            city: "{{faker.location.city}}"
+            state: "{{faker.location.state}}"
+            zipCode: "{{faker.location.zipCode}}"
+            country: "{{faker.location.country}}"
+
+          # Account details
+          username: "{{faker.internet.username}}"
+          password: "{{faker.internet.password}}"
+
+          # Identifiers
+          id: "{{faker.string.uuid}}"
+
+          # Numbers
+          age: "{{randomInt(18, 65)}}"
+          score: "{{randomInt(0, 100)}}"
+
+          # Dates
+          registeredAt: "{{isoDate(0)}}"
+          birthDate: "{{isoDate(-10000)}}"
+        checks:
+          - type: "status"
+            value: 200
+        extract:
+          - name: "user_id"
+            type: "json_path"
+            expression: "$.id"
+            default: "{{faker.string.uuid}}"
+
+      # Create a product with random data
+      - name: "create_product"
+        type: "rest"
+        method: "POST"
+        path: "/products"
+        json:
+          name: "{{faker.commerce.productName}}"
+          description: "{{faker.commerce.productDescription}}"
+          price: "{{randomInt(10, 500)}}"
+          category: "{{faker.commerce.department}}"
+          sku: "{{faker.string.alphanumeric(10)}}"
+          inStock: true
+          createdBy: "{{user_id}}"
+        checks:
+          - type: "status"
+            value: 200
+
+      # Create an order combining user and product data
+      - name: "create_order"
+        type: "rest"
+        method: "POST"
+        path: "/orders"
+        json:
+          orderId: "{{faker.string.uuid}}"
+          userId: "{{user_id}}"
+          items:
+            - productName: "{{faker.commerce.productName}}"
+              quantity: "{{randomInt(1, 5)}}"
+              price: "{{randomInt(10, 100)}}"
+          shippingAddress:
+            recipient: "{{faker.person.fullName}}"
+            street: "{{faker.location.streetAddress}}"
+            city: "{{faker.location.city}}"
+            zipCode: "{{faker.location.zipCode}}"
+          paymentMethod: "{{randomChoice('credit_card', 'paypal', 'bank_transfer')}}"
+          notes: "{{faker.lorem.sentence}}"
+        checks:
+          - type: "status"
+            value: 200
+
+outputs:
+  - type: "json"
+    file: "results/faker-test.json"
+
+report:
+  generate: true
+  output: "reports/faker-test-report.html"
+`;
+
+  // Workers configuration for distributed testing
+  const workersConfig = `[
+  {
+    "host": "localhost",
+    "port": 8080,
+    "capacity": 100,
+    "region": "local"
+  },
+  {
+    "host": "localhost",
+    "port": 8081,
+    "capacity": 100,
+    "region": "local"
+  }
+]
+`;
+
   fs.writeFileSync(path.join(projectDir, 'tests/api/sample-test.yml'), basicTest);
+  fs.writeFileSync(path.join(projectDir, 'tests/api/load-test.yml'), loadTest);
+  fs.writeFileSync(path.join(projectDir, 'tests/api/script-test.yml'), scriptTest);
+  fs.writeFileSync(path.join(projectDir, 'tests/api/templating-test.yml'), templatingTest);
+  fs.writeFileSync(path.join(projectDir, 'tests/api/faker-test.yml'), fakerTest);
+  fs.writeFileSync(path.join(projectDir, 'scripts/helpers.ts'), helperScript);
+  fs.writeFileSync(path.join(projectDir, 'data/users.csv'), sampleCSV);
+  fs.writeFileSync(path.join(projectDir, 'payloads/create-user.json'), createUserPayload);
+  fs.writeFileSync(path.join(projectDir, 'payloads/update-user.json'), updateUserPayload);
+  fs.writeFileSync(path.join(projectDir, 'config/workers.json'), workersConfig);
 }
 
 function createAPITemplate(projectDir: string): void {
@@ -516,7 +1012,7 @@ scenarios:
         action:
           command: "screenshot"
           options:
-            path: "screenshots/homepage-{{__VU}}-{{timestamp}}.png"
+            path: "results/screenshots/homepage-{{__VU}}-{{timestamp}}.png"
 
 outputs:
   - type: "json"
@@ -688,13 +1184,78 @@ Performance testing project created with Perfornium framework.
 
 - \`tests/\` - Test configurations
   - \`api/\` - REST API tests
-  - \`web/\` - Web application tests  
+  - \`web/\` - Web application tests
   - \`mixed/\` - Mixed protocol tests
 - \`config/environments/\` - Environment-specific configurations
+- \`data/\` - CSV and test data files
+- \`payloads/\` - JSON/XML payload templates for API tests
 - \`scripts/\` - Custom scripts and utilities
-- \`results/\` - Test results (auto-generated)
+- \`results/\` - Test results (JSON, CSV, screenshots)
 - \`reports/\` - HTML reports (auto-generated)
-- \`screenshots/\` - Web test screenshots
+
+## Using Faker for Dynamic Data
+
+Generate realistic test data using faker (lazily loaded for performance):
+
+\`\`\`yaml
+steps:
+  - name: "create_user"
+    type: "rest"
+    method: "POST"
+    path: "/users"
+    json:
+      firstName: "{{faker.person.firstName}}"
+      lastName: "{{faker.person.lastName}}"
+      email: "{{faker.internet.email}}"
+      phone: "{{faker.phone.number}}"
+      address:
+        city: "{{faker.location.city}}"
+        zipCode: "{{faker.location.zipCode}}"
+      age: "{{randomInt(18, 65)}}"
+      role: "{{randomChoice('admin', 'user', 'guest')}}"
+\`\`\`
+
+See \`tests/api/faker-test.yml\` for comprehensive examples.
+
+## Using Payload Files
+
+Load JSON payloads from files and override values dynamically:
+
+\`\`\`yaml
+steps:
+  - name: "create_user"
+    type: "rest"
+    method: "POST"
+    path: "/users"
+    jsonFile: "payloads/create-user.json"
+    overrides:
+      email: "{{faker.internet.email}}"
+      profile.firstName: "{{firstName}}"
+      settings.notifications: false
+\`\`\`
+
+See \`tests/api/templating-test.yml\` for more examples.
+
+## Distributed Testing
+
+Run load tests across multiple worker nodes for higher throughput:
+
+\`\`\`bash
+# Terminal 1: Start first worker
+perfornium worker --port 8080
+
+# Terminal 2: Start second worker
+perfornium worker --port 8081
+
+# Terminal 3: Run distributed test
+perfornium distributed tests/api/load-test.yml --workers-file config/workers.json --report
+\`\`\`
+
+Workers configuration is in \`config/workers.json\`. You can also specify workers inline:
+
+\`\`\`bash
+perfornium distributed tests/api/load-test.yml --workers "localhost:8080,localhost:8081"
+\`\`\`
 
 ## Available Commands
 
@@ -704,6 +1265,11 @@ npm run test                 # Run default test
 npm run test:api            # Run API tests
 npm run test:web            # Run web tests
 npm run test:mixed          # Run mixed tests
+
+# Distributed testing
+npm run worker:8080         # Start worker on port 8080
+npm run worker:8081         # Start worker on port 8081
+npm run distributed tests/api/load-test.yml  # Run distributed test
 
 # Validate configurations
 npm run validate tests/api/sample-test.yml

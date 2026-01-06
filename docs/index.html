@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Perfornium - Documentation</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="Description">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple-dark.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-tabs@1/dist/docsify-tabs.min.css">
+  <style>
+    /* Custom tab styling to match Perfornium branding */
+    .docsify-tabs__tab--active {
+      background: linear-gradient(135deg, #00d4ff, #9c40ff);
+      color: white !important;
+    }
+    .docsify-tabs__tab {
+      background: #1a1a2e;
+      color: #9ca3af;
+      border: 1px solid #2a2a4e;
+    }
+    .docsify-tabs__tab:hover {
+      color: #00d4ff;
+    }
+    .docsify-tabs__content {
+      background: #0f0f23;
+      border: 1px solid #2a2a4e;
+      border-top: none;
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+  window.$docsify = {
+    name: 'Perfornium',
+    repo: 'https://github.com/testsmith-io/perfornium',
+    routerMode: 'hash',
+    homepage: 'README.md',
+
+    // Sidebar configuration
+    loadSidebar: true,
+    autoHeader: true,
+    subMaxLevel: 2,
+
+    // Navigation
+    loadNavbar: false,
+
+    // Search
+    search: {
+      maxAge: 86400000,
+      paths: 'auto',
+      placeholder: 'Search documentation...',
+      noData: 'No results found.',
+      depth: 3
+    },
+
+    // Plugins
+    copyCode: {
+      buttonText: 'Copy',
+      errorText: 'Error',
+      successText: 'Copied'
+    },
+
+    // Custom theme
+    themeColor: '#00d4ff',
+
+    // Tabs plugin configuration
+    tabs: {
+      persist: true,
+      sync: true,
+      theme: 'classic',
+      tabComments: true,
+      tabHeadings: true
+    }
+  }
+</script>
+<script src="//cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>
+<!-- Plugins -->
+<script src="//cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+<script src="//cdn.jsdelivr.net/npm/docsify-copy-code@2"></script>
+<script src="//cdn.jsdelivr.net/npm/docsify-tabs@1"></script>
+<script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-yaml.min.js"></script>
+<script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-typescript.min.js"></script>
+</body>
+</html>

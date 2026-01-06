@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {logger} from '../utils/logger';
 import {HookScript, ScriptContext, ScriptResult} from '../config/types/hooks';
-import {VUContext} from '../config/types';
+import {VUContext} from '../config';
 
 export class ScriptExecutor {
   private static baseDir: string = process.cwd();
@@ -12,10 +12,6 @@ export class ScriptExecutor {
 
   static setStepExecutor(stepExecutor: any): void {
     ScriptExecutor.stepExecutor = stepExecutor;
-  }
-
-  static setBaseDir(dir: string): void {
-    ScriptExecutor.baseDir = dir;
   }
 
   // Add the createContext static method
@@ -54,7 +50,7 @@ export class ScriptExecutor {
           if (!script.content) {
             throw new Error('Inline script content is required');
           }
-          result = await ScriptExecutor.executeInlineScript(script.content, context, hookName);
+          result = await ScriptExecutor.executeInlineScript(script.content, context);
           break;
         case 'file':
           if (!script.file) {
@@ -102,7 +98,7 @@ export class ScriptExecutor {
     }
   }
 
-  private static async executeInlineScript(content: string, context: ScriptContext, hookName: string): Promise<any> {
+  private static async executeInlineScript(content: string, context: ScriptContext): Promise<any> {
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     
     const wrappedContent = `
@@ -182,7 +178,7 @@ export class ScriptExecutor {
         delete require.cache[tempFilePath];
         const moduleExports = require(tempFilePath);
         
-        let hookFunction;
+        let hookFunction: (arg0: ScriptContext, arg1: { setVariable: (key: string, value: any) => void; getVariable: (key: string) => any; utils: { randomInt: (min?: number, max?: number) => number; randomChoice: (...choices: any[]) => any; uuid: () => any; sleep: (ms: number) => Promise<unknown>; timestamp: () => number; isoDate: (days?: number) => string; }; }) => any;
         if (typeof moduleExports === 'function') {
           hookFunction = moduleExports;
         } else if (moduleExports.default && typeof moduleExports.default === 'function') {
@@ -228,7 +224,7 @@ export class ScriptExecutor {
       }
     } else {
       // Handle as direct script (same as inline)
-      return ScriptExecutor.executeInlineScript(content, context, hookName);
+      return ScriptExecutor.executeInlineScript(content, context);
     }
   }
 
@@ -249,7 +245,7 @@ export class ScriptExecutor {
   
   for (const step of steps) {
     try {
-      console.log(`🪝 Executing hook step: ${step.name || step.type}`);
+      logger.debug(`Executing hook step: ${step.name || step.type}`);
       const result = await ScriptExecutor.stepExecutor.executeStepInternal(
         step, 
         vuContext, 
@@ -270,8 +266,8 @@ export class ScriptExecutor {
       
       // Log what was extracted for debugging
       if (Object.keys(vuContext.extracted_data).length > 0) {
-        console.log(`🪝 VU${context.vu_id}: Hook step extracted data:`, Object.keys(vuContext.extracted_data));
-        console.log(`🪝 VU${context.vu_id}: Extracted values:`, vuContext.extracted_data);
+        logger.debug(`VU${context.vu_id}: Hook step extracted data: ${Object.keys(vuContext.extracted_data).join(', ')}`);
+        logger.debug(`VU${context.vu_id}: Extracted values: ${JSON.stringify(vuContext.extracted_data)}`);
       }
       
     } catch (error) {

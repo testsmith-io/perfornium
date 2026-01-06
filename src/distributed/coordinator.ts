@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { TestConfiguration } from '../config/types';
+import { TestConfiguration } from '../config';
 import { RemoteWorker, RemoteWorkerConfig } from './remote-worker'; // Fixed import
 import { LoadDistributor } from './load-distributor';
 import { ResultAggregator } from './result-aggregator';
@@ -163,11 +163,19 @@ export class DistributedCoordinator extends EventEmitter {
     for (const worker of this.workers) {
       try {
         const workerResults = await worker.getResults();
-        if (workerResults && workerResults.results) {
+        if (workerResults) {
           // Add worker results to aggregator
-          workerResults.results.forEach((result: any) => {
-            this.resultAggregator.addResult(result, worker.getAddress());
-          });
+          if (workerResults.results) {
+            workerResults.results.forEach((result: any) => {
+              this.resultAggregator.addResult(result, worker.getAddress());
+            });
+          }
+
+          // Add VU ramp-up events from worker's summary
+          if (workerResults.summary?.vu_ramp_up && Array.isArray(workerResults.summary.vu_ramp_up)) {
+            this.resultAggregator.addVURampUpEvents(workerResults.summary.vu_ramp_up, worker.getAddress());
+            logger.debug(`📊 Collected ${workerResults.summary.vu_ramp_up.length} VU events from ${worker.getAddress()}`);
+          }
         }
       } catch (error) {
         logger.warn(`⚠️ Failed to get results from worker ${worker.getAddress()}:`, error);
@@ -212,17 +220,5 @@ export class DistributedCoordinator extends EventEmitter {
 
   getAggregatedResults(): any {
     return this.resultAggregator.getAggregatedResults();
-  }
-
-  getWorkerStatuses(): any[] {
-    return this.workers.map(worker => ({
-      address: worker.getAddress(),
-      status: this.healthMonitor.getWorkerStatus(worker.getAddress()),
-      connected: worker.isConnected()
-    }));
-  }
-
-  getTotalCapacity(): number {
-    return this.workers.reduce((total, worker) => total + worker.getCapacity(), 0);
   }
 }

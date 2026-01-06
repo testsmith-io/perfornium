@@ -6,7 +6,8 @@ import { validateCommand } from './commands/validate';
 import { reportCommand } from './commands/report';
 import { workerCommand } from './commands/worker';
 import { initCommand } from './commands/init';
-import { recordCommand } from './commands/record';
+import { mockCommand } from './commands/mock';
+import { startNativeRecording } from '../recorder/native-recorder';
 import { distributedCommand } from './commands/distributed';
 
 // Add new import commands
@@ -30,7 +31,14 @@ program
     .option('--dry-run', 'Validate configuration without running test')
     .option('-v, --verbose', 'Enable verbose logging')
     .option('--max-users <number>', 'Maximum virtual users override')
+    .option('-g, --global <key=value>', 'Override global config (supports dot notation: browser.headless=false)', collectGlobals, [])
     .action(runCommand);
+
+// Helper function to collect --global options
+function collectGlobals(value: string, previous: string[]): string[] {
+    previous.push(value);
+    return previous;
+}
 
 program
     .command('distributed')
@@ -67,7 +75,7 @@ program
 // ============================================
 program
     .command('record')
-    .description('Record web interactions for test creation')
+    .description('Record web interactions for test creation (Ctrl+W to add wait points)')
     .argument('<url>', 'Starting URL for recording')
     .option('-o, --output <file>', 'Output file for recorded scenario')
     .option('--viewport <viewport>', 'Browser viewport size (e.g., 1920x1080)')
@@ -75,16 +83,22 @@ program
     .option('-f, --format <format>', 'Output format: yaml, json, or typescript', 'yaml')
     .action(async (url: string, options: any) => {
         // Auto-determine file extension if output not specified
+        // Save to tests/web directory by default
         if (!options.output) {
             const extensions: Record<string, string> = {
-                yaml: 'recorded-scenario.yml',
-                json: 'recorded-scenario.json',
-                typescript: 'recorded-scenario.spec.ts'
+                yaml: 'tests/web/recorded-scenario.yml',
+                json: 'tests/web/recorded-scenario.json',
+                typescript: 'tests/web/recorded-scenario.spec.ts'
             };
-            options.output = extensions[options.format] || 'recorded-scenario.yml';
+            options.output = extensions[options.format] || 'tests/web/recorded-scenario.yml';
         }
 
-        await recordCommand(url, options);
+        await startNativeRecording(url, {
+            output: options.output,
+            format: options.format,
+            viewport: options.viewport,
+            baseUrl: options.baseUrl
+        });
     });
 
 // ============================================
@@ -186,5 +200,13 @@ program
     .option('-t, --template <template>', 'Project template (basic|api|web|mixed)', 'basic')
     .option('--examples', 'Include example test configurations')
     .action(initCommand);
+
+program
+    .command('mock')
+    .description('Start a mock API server for testing')
+    .option('-p, --port <port>', 'Port to listen on', '3000')
+    .option('--host <host>', 'Host to bind to', 'localhost')
+    .option('-d, --delay <ms>', 'Add delay to all responses (ms)', '0')
+    .action(mockCommand);
 
 program.parse();

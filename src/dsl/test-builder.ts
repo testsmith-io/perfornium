@@ -1,15 +1,13 @@
-// src/dsl/test-builder.ts
-
 import type {
     TestConfiguration,
     Scenario,
     Step,
     LoadConfig,
+    LoadPhase,
     GlobalConfig,
-    OutputConfig,
-    ReportConfig
+    OutputConfig
 } from '../config';
-import { faker } from '@faker-js/faker';
+import { getFaker } from '../utils/faker-manager';
 
 export interface ScenarioContext {
     vu_id: number | string;
@@ -187,7 +185,7 @@ export class ScenarioBuilder {
 
     request(method: string, path: string, options?: any): this {
         const step: any = {
-            name: `${method} ${path}`,
+            name: options?.name || `${method} ${path}`,
             type: 'rest',
             method,
             path
@@ -195,10 +193,57 @@ export class ScenarioBuilder {
 
         if (options?.headers) step.headers = options.headers;
         if (options?.json) step.json = options.json;
+        if (options?.body) step.body = options.body;
+        if (options?.xml) step.xml = options.xml;
+        if (options?.form) step.form = options.form;
+        if (options?.multipart) step.multipart = options.multipart;
+        if (options?.query) step.query = options.query;
+        if (options?.auth) step.auth = options.auth;
         if (options?.extract) step.extract = options.extract;
         if (options?.checks) step.checks = options.checks;
+        if (options?.timeout) step.timeout = options.timeout;
 
         return this.addStep(step);
+    }
+
+    // Enhanced methods for different auth types
+    withBasicAuth(username: string, password: string): this {
+        const lastStep = this.scenario.steps![this.scenario.steps!.length - 1] as any;
+        if (lastStep.type === 'rest') {
+            lastStep.auth = { type: 'basic', username, password };
+        }
+        return this;
+    }
+
+    withBearerToken(token: string): this {
+        const lastStep = this.scenario.steps![this.scenario.steps!.length - 1] as any;
+        if (lastStep.type === 'rest') {
+            lastStep.auth = { type: 'bearer', token };
+        }
+        return this;
+    }
+
+    withHeaders(headers: Record<string, string>): this {
+        const lastStep = this.scenario.steps![this.scenario.steps!.length - 1] as any;
+        if (lastStep.type === 'rest') {
+            lastStep.headers = { ...lastStep.headers, ...headers };
+        }
+        return this;
+    }
+
+    withQuery(params: Record<string, string | number | boolean>): this {
+        const lastStep = this.scenario.steps![this.scenario.steps!.length - 1] as any;
+        if (lastStep.type === 'rest') {
+            lastStep.query = params;
+        }
+        return this;
+    }
+
+    // Add think time to the last step
+    withThinkTime(time: string | number): this {
+        const lastStep = this.scenario.steps![this.scenario.steps!.length - 1] as any;
+        lastStep.think_time = time;
+        return this;
     }
 
     extract(name: string, expression: string, type: 'json_path' | 'regex' = 'json_path'): this {
@@ -258,7 +303,12 @@ export class ScenarioBuilder {
 }
 
 export class LoadBuilder {
-    private loadConfig: Partial<LoadConfig> = {};
+    private loadConfig: Partial<LoadPhase> = {};
+
+    name(name: string): this {
+        this.loadConfig.name = name;
+        return this;
+    }
 
     pattern(pattern: 'basic' | 'stepping' | 'arrivals'): this {
         this.loadConfig.pattern = pattern;
@@ -267,6 +317,11 @@ export class LoadBuilder {
 
     virtualUsers(count: number): this {
         this.loadConfig.virtual_users = count;
+        return this;
+    }
+
+    vus(count: number): this {
+        this.loadConfig.vus = count;
         return this;
     }
 
@@ -290,11 +345,14 @@ export class LoadBuilder {
         return this;
     }
 
-    build(): LoadConfig {
+    build(): LoadPhase {
         if (!this.loadConfig.pattern) {
             this.loadConfig.pattern = 'basic';
         }
-        return this.loadConfig as LoadConfig;
+        if (!this.loadConfig.duration) {
+            this.loadConfig.duration = '1m'; // Default duration
+        }
+        return this.loadConfig as LoadPhase;
     }
 }
 
@@ -362,6 +420,14 @@ export class TestBuilder {
         return this;
     }
 
+    headers(headers: Record<string, string>): this {
+        this.config.global = {
+            ...this.config.global,
+            headers: { ...(this.config.global?.headers || {}), ...headers }
+        };
+        return this;
+    }
+
     withBrowser(type: 'chromium' | 'firefox' | 'webkit', options?: any): this {
         this.config.global = {
             ...this.config.global,
@@ -400,13 +466,24 @@ export class TestBuilder {
         return this;
     }
 
-    // Load configuration
-    withLoad(load: LoadConfig | LoadBuilder): this {
-        if (load instanceof LoadBuilder) {
+    // Load configuration - supports single phase or array of phases
+    withLoad(load: LoadConfig | LoadBuilder | LoadBuilder[]): this {
+        if (Array.isArray(load)) {
+            // Array of LoadBuilders - build each one
+            this.config.load = load.map(lb => lb instanceof LoadBuilder ? lb.build() : lb);
+        } else if (load instanceof LoadBuilder) {
             this.config.load = load.build();
         } else {
             this.config.load = load;
         }
+        return this;
+    }
+
+    // Add multiple load phases (sequential execution)
+    withLoadPhases(...phases: (LoadPhase | LoadBuilder)[]): this {
+        this.config.load = phases.map(phase =>
+            phase instanceof LoadBuilder ? phase.build() : phase
+        );
         return this;
     }
 
@@ -462,16 +539,15 @@ export class TestBuilder {
         await runner.run();
     }
 }
-// Data generation utilities
-export { faker };
+// Data generation utilities - lazily loaded
+export { getFaker as faker };
 
 export const testData = {
-    email: () => faker.internet.email(),
-    password: () => faker.internet.password(),
-    firstName: () => faker.person.firstName(),
-    lastName: () => faker.person.lastName(),
-    phone: () => faker.phone.number(),
-    uuid: () => faker.string.uuid(),
-    randomInt: (min: number, max: number) => faker.number.int({ min, max }),
-    randomText: (length: number) => faker.lorem.words(length / 5)
+    email: () => getFaker().internet.email(),
+    password: () => getFaker().internet.password(),
+    firstName: () => getFaker().person.firstName(),
+    lastName: () => getFaker().person.lastName(),
+    phone: () => getFaker().phone.number(),
+    uuid: () => getFaker().string.uuid(),
+    randomInt: (min: number, max: number) => getFaker().number.int({ min, max })
 };

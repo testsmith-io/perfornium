@@ -1,7 +1,6 @@
-// ===== Fixed TestRunner class =====
-import { TestConfiguration } from '../config/types';
+import { TestConfiguration } from '../config';
 import { MetricsCollector } from '../metrics/collector';
-import { VirtualUser } from './virtual-user';
+import { VirtualUser, GlobalCSVOptions } from './virtual-user';
 import { ProtocolHandler } from '../protocols/base';
 import { RESTHandler } from '../protocols/rest/handler';
 import { SOAPHandler } from '../protocols/soap/handler';
@@ -19,6 +18,7 @@ import { WebhookOutput } from '../outputs/webhook';
 import { logger, LogLevel } from '../utils/logger';
 import { sleep } from '../utils/time';
 import { CSVDataProvider } from './csv-data-provider';
+import { FileManager } from '../utils/file-manager';
 
 export class TestRunner {
   private config: TestConfiguration;
@@ -29,7 +29,7 @@ export class TestRunner {
   private isRunning: boolean = false;
   private startTime: number = 0;
 
- constructor(config: TestConfiguration) {
+  constructor(config: TestConfiguration) {
     this.config = config;
     this.metrics = new MetricsCollector();
 
@@ -92,8 +92,8 @@ export class TestRunner {
       if (hasStopOnExhaustion) {
         logger.info('⏹️ CSV exhaustion handling enabled - individual VUs will stop when CSV data is exhausted');
       }
-      
-      console.log(`📁 Set CSV base directory: ${baseDir}`);
+
+      logger.debug(`Set CSV base directory: ${baseDir}`);
     }
   }
 
@@ -145,7 +145,7 @@ export class TestRunner {
     if (protocolsNeeded.has('rest')) {
       const handler = new RESTHandler(
         this.config.global?.base_url,
-        {},
+        this.config.global?.headers || {},
         this.config.global?.timeout,
         debugConfig // Pass debug config to handler
       );
@@ -166,10 +166,15 @@ export class TestRunner {
 
     // Initialize Web handler if needed
     if (protocolsNeeded.has('web')) {
+      const browserConfig = (this.config.global as any)?.web || this.config.global?.browser || {};
       const webConfig = {
-        type: this.config.global?.browser?.type || 'chromium',
-        headless: this.config.global?.browser?.headless ?? true,
-        base_url: this.config.global?.base_url
+        type: browserConfig.type || 'chromium',
+        headless: browserConfig.headless ?? true,
+        base_url: browserConfig.base_url || this.config.global?.base_url,
+        viewport: browserConfig.viewport,
+        slow_mo: browserConfig.slow_mo,
+        highlight: browserConfig.highlight,
+        clear_storage: browserConfig.clear_storage
       };
       const handler = new WebHandler(webConfig as any);
       await handler.initialize();
@@ -219,12 +224,15 @@ export class TestRunner {
       let output: OutputHandler;
 
       try {
+        // Process timestamp templates in file paths
+        const processedFilePath = this.processTemplateFilePath(outputConfig.file);
+        
         switch (outputConfig.type) {
           case 'csv':
-            output = new CSVOutput(outputConfig.file!);
+            output = new CSVOutput(processedFilePath);
             break;
           case 'json':
-            output = new JSONOutput(outputConfig.file!);
+            output = new JSONOutput(processedFilePath);
             break;
           case 'influxdb':
             output = new InfluxDBOutput(
@@ -264,36 +272,82 @@ export class TestRunner {
     }
   }
 
-  private async executeLoadPattern(): Promise<void> {
-    const pattern = this.getLoadPattern();
-    
-    // Setup base directory for CSV files BEFORE creating VUs
-    this.setupCSVBaseDirectory();
-    
-    const vuFactory = this.createVUFactory();
-
-    logger.info(`📈 Executing load pattern: ${this.config.load.pattern}`);
-
-    await pattern.execute(this.config.load, vuFactory);
-
-    // Wait for all VUs to complete
-    if (this.config.load.duration) {
-      await this.waitForVUsToComplete();
-    } else {
-      // For "run once" mode, clear activeVUs since pattern already waited
-      this.activeVUs.forEach(vu => vu.stop());
-      this.activeVUs.length = 0;
-      logger.debug('✅ Cleared active VUs after run-once execution');
+  /**
+   * Process template variables in file paths and automatically add timestamp if not present
+   */
+  private processTemplateFilePath(filePath?: string): string {
+    if (!filePath) {
+      return `results/${this.config.name}-{{timestamp}}.csv`;
     }
+
+    // If no timestamp placeholder exists, automatically add one before the extension
+    let processedPath = filePath;
+    if (!filePath.includes('{{timestamp}}')) {
+      const lastDot = filePath.lastIndexOf('.');
+      if (lastDot > 0) {
+        const name = filePath.substring(0, lastDot);
+        const ext = filePath.substring(lastDot);
+        processedPath = `${name}-{{timestamp}}${ext}`;
+      } else {
+        processedPath = `${filePath}-{{timestamp}}`;
+      }
+    }
+
+    // Use FileManager to process timestamp templates
+    return FileManager.processFilePath(processedPath);
   }
 
-  private getLoadPattern(): LoadPattern {
+  private async executeLoadPattern(): Promise<void> {
+    // Setup base directory for CSV files BEFORE creating VUs
+    this.setupCSVBaseDirectory();
+
+    const vuFactory = this.createVUFactory();
+
+    // Support both single load config and array of phases
+    const loadPhases = Array.isArray(this.config.load) ? this.config.load : [this.config.load];
+
+    logger.info(`📈 Executing ${loadPhases.length} load phase(s)`);
+
+    // Execute each load phase sequentially
+    for (let i = 0; i < loadPhases.length; i++) {
+      const phase = loadPhases[i];
+      const phaseName = phase.name || `Phase ${i + 1}`;
+
+      logger.info(`\n🔄 Starting ${phaseName}: ${phase.pattern} pattern`);
+      if (phase.virtual_users || phase.vus) {
+        logger.info(`   Users: ${phase.virtual_users || phase.vus}, Duration: ${phase.duration}`);
+      }
+
+      const pattern = this.getLoadPatternForPhase(phase);
+      await pattern.execute(phase, vuFactory);
+
+      // Wait for phase to complete
+      if (phase.duration) {
+        await this.waitForVUsToComplete();
+      } else {
+        // For "run once" mode, clear activeVUs
+        this.activeVUs.forEach(vu => vu.stop());
+        this.activeVUs.length = 0;
+      }
+
+      logger.success(`✅ Completed ${phaseName}`);
+
+      // Small gap between phases
+      if (i < loadPhases.length - 1) {
+        logger.info('⏸️  Pausing 2s between phases...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    logger.success(`\n🎉 All ${loadPhases.length} load phase(s) completed`);
+  }
+
+  private getLoadPatternForPhase(phase: any): LoadPattern {
     let pattern: LoadPattern;
-    
-    switch (this.config.load.pattern) {
+
+    switch (phase.pattern) {
       case 'basic':
         pattern = new BasicPattern();
-        // Pass test running checker to pattern
         if ('setTestRunningChecker' in pattern) {
           (pattern as any).setTestRunningChecker(() => this.isRunning);
         }
@@ -305,21 +359,43 @@ export class TestRunner {
         pattern = new ArrivalsPattern();
         break;
       default:
-        throw new Error(`Unsupported load pattern: ${this.config.load.pattern}`);
+        throw new Error(`Unsupported load pattern: ${phase.pattern}`);
     }
-    
+
     return pattern;
   }
+
 
   private createVUFactory(): VUFactory {
     return {
       create: async (id: number): Promise<VirtualUser> => {
-        const vu = new VirtualUser(id, this.metrics, this.handlers);
+        // Pass global think time to VU
+        const globalThinkTime = this.config.global?.think_time;
+
+        // Build global CSV options if configured
+        let globalCSV: GlobalCSVOptions | undefined;
+        if (this.config.global?.csv_data) {
+          globalCSV = {
+            config: this.config.global.csv_data,
+            mode: this.config.global.csv_mode || 'next'
+          };
+          logger.debug(`VU ${id}: Global CSV configured from test config`);
+        }
+
+        const vu = new VirtualUser(
+          id,
+          this.metrics,
+          this.handlers,
+          this.config.name,
+          undefined, // vuHooks
+          globalThinkTime,
+          globalCSV
+        );
 
         // CRITICAL: Must await the CSV initialization
-        console.log(`🔧 Initializing VU ${id} with scenarios (including CSV)...`);
+        logger.debug(`Initializing VU ${id} with scenarios (including CSV)...`);
         await vu.setScenarios(this.config.scenarios);
-        console.log(`✅ VU ${id} fully initialized`);
+        logger.debug(`VU ${id} fully initialized`);
 
         this.activeVUs.push(vu);
         return vu;
@@ -438,21 +514,20 @@ export class TestRunner {
 
   private async generateReport(summary: any): Promise<void> {
     try {
-      const { HTMLReportGenerator } = await import('../reporting/generator');
-      const generator = new HTMLReportGenerator();
+      const { EnhancedHTMLReportGenerator } = await import('../reporting/enhanced-html-generator');
+      const generator = new EnhancedHTMLReportGenerator();
 
-      const reportPath = this.config.report!.output;
+      // Process report path with automatic timestamp
+      const reportPath = this.processTemplateFilePath(this.config.report!.output);
+
       await generator.generate(
         {
           testName: this.config.name,
           summary,
           results: this.metrics.getResults()
         },
-        this.config.report!,
         reportPath
       );
-
-      logger.success(`📋 HTML report generated: ${reportPath}`);
     } catch (error) {
       logger.error('❌ Report generation failed:', error);
     }
@@ -460,14 +535,6 @@ export class TestRunner {
 
   getMetrics(): MetricsCollector {
     return this.metrics;
-  }
-
-  getActiveVUCount(): number {
-    return this.activeVUs.length;
-  }
-
-  isTestRunning(): boolean {
-    return this.isRunning;
   }
 
 }

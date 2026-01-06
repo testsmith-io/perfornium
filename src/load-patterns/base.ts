@@ -1,4 +1,4 @@
-import { VirtualUser } from '../core/virtual-user';
+import { VirtualUser } from '../core';
 import { MetricsCollector } from '../metrics/collector';
 
 export interface LoadPattern {

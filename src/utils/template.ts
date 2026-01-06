@@ -1,9 +1,11 @@
-import { faker, fakerDE, fakerFR, fakerES, fakerNL } from '@faker-js/faker';
 import { FakerConfig } from '../config/types';
 import { CSVDataProvider, CSVDataConfig } from '../core/csv-data-provider';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as Handlebars from 'handlebars';
+import { logger } from './logger';
+import { TimestampHelper } from './timestamp-helper';
+import { fakerManager } from './faker-manager';
 
 export interface TemplateConfig {
   file: string;
@@ -12,22 +14,13 @@ export interface TemplateConfig {
 
 export class TemplateProcessor {
   // Static/global configuration shared across all instances
-  private static globalLocale: string = 'en';
-  private static globalSeed: number | undefined;
-  private static availableLocales: Record<string, any> = {
-    'en': faker,
-    'de': fakerDE,
-    'fr': fakerFR,
-    'es': fakerES,
-    'nl': fakerNL
-  };
   private static templateCache: Map<string, HandlebarsTemplateDelegate> = new Map();
   private static handlebarHelpersRegistered: boolean = false;
   private static baseDir: string = process.cwd();
 
-  // Instance gets the correct faker based on global locale
+  // Instance gets faker from the lazy-loading manager
   private get fakerInstance() {
-    return TemplateProcessor.availableLocales[TemplateProcessor.globalLocale] || faker;
+    return fakerManager.getFaker();
   }
 
   constructor() {
@@ -38,20 +31,20 @@ export class TemplateProcessor {
    * Configure faker settings globally (affects all instances)
    */
   configureFaker(config: FakerConfig): void {
-    console.log(`🔧 configureFaker called with:`, config);
-    console.log(`🔧 Current global locale: ${TemplateProcessor.globalLocale}`);
-    
-    if (config.locale && TemplateProcessor.availableLocales[config.locale]) {
-      TemplateProcessor.globalLocale = config.locale;
-      console.log(`🌍 Global faker locale set to: ${config.locale}`);
-      console.log(`🌍 All TemplateProcessor instances will now use: ${this.fakerInstance.constructor.name}`);
+    logger.debug(`configureFaker called with: ${JSON.stringify(config)}`);
+    logger.debug(`Current global locale: ${fakerManager.currentLocale}`);
+
+    const availableLocales = fakerManager.getAvailableLocales();
+    if (config.locale && availableLocales.includes(config.locale)) {
+      fakerManager.setLocale(config.locale);
+      logger.debug(`Global faker locale set to: ${config.locale}`);
     } else if (config.locale) {
-      console.warn(`🌍 Locale "${config.locale}" not available. Available: ${Object.keys(TemplateProcessor.availableLocales).join(', ')}`);
+      logger.warn(`Locale "${config.locale}" not available. Available: ${availableLocales.join(', ')}`);
     }
-    
+
     if (config.seed !== undefined) {
-      TemplateProcessor.globalSeed = config.seed;
-      console.log(`🎲 Global seed set to: ${config.seed}`);
+      fakerManager.setSeed(config.seed);
+      logger.debug(`Global seed set to: ${config.seed}`);
     }
   }
 
@@ -90,8 +83,9 @@ export class TemplateProcessor {
       return this.fakerInstance.string.uuid();
     });
 
-    Handlebars.registerHelper('timestamp', () => {
-      return Date.now();
+    Handlebars.registerHelper('timestamp', (format?: string) => {
+      const fmt = (format || 'unix') as 'unix' | 'iso' | 'readable' | 'file';
+      return TimestampHelper.getTimestamp(fmt);
     });
 
     Handlebars.registerHelper('isoDate', (days: number = 0) => {
@@ -112,7 +106,7 @@ export class TemplateProcessor {
     Handlebars.registerHelper('last', (array: any) => array && array.length > 0 ? array[array.length - 1] : null);
 
     TemplateProcessor.handlebarHelpersRegistered = true;
-    console.log('📝 Handlebars helpers registered');
+    logger.debug('Handlebars helpers registered');
   }
 
   /**
@@ -126,7 +120,7 @@ export class TemplateProcessor {
    * Get available locales
    */
   getAvailableLocales(): string[] {
-    return Object.keys(TemplateProcessor.availableLocales);
+    return fakerManager.getAvailableLocales();
   }
 
   /**
@@ -136,19 +130,18 @@ export class TemplateProcessor {
     // ALWAYS set a unique seed before processing ANY templates
     const vuId = context.vu_id || context.__VU || 1;
     const iteration = context.iteration || context.__ITER || 0;
-    
+
     // Create a truly unique seed for each call
     const timestamp = Date.now();
     const randomComponent = Math.floor(Math.random() * 10000);
-    const baseSeed = TemplateProcessor.globalSeed || 0;
-    const uniqueSeed = timestamp + (vuId * 100000) + (iteration * 1000) + randomComponent + baseSeed;
-    
+    const uniqueSeed = timestamp + (vuId * 100000) + (iteration * 1000) + randomComponent;
+
     this.fakerInstance.seed(uniqueSeed);
-    
+
     // Test the seed immediately
     const testName = this.fakerInstance.person.firstName();
-    console.log(`🎲 VU${vuId} Iter${iteration}: Seed ${uniqueSeed} (locale: ${TemplateProcessor.globalLocale}) -> Test: "${testName}"`);
-    
+    logger.debug(`VU${vuId} Iter${iteration}: Seed ${uniqueSeed} (locale: ${fakerManager.currentLocale}) -> Test: "${testName}"`);
+
     // Reset the seed again (in case the test call changed the state)
     this.fakerInstance.seed(uniqueSeed);
 
@@ -171,8 +164,8 @@ export class TemplateProcessor {
     };
 
     // FIRST: Process all faker expressions and context variables to resolve them
-    let processedVariables = { ...context.variables };
-    let processedExtractedData = { ...context.extracted_data };
+    const processedVariables = { ...context.variables };
+    const processedExtractedData = { ...context.extracted_data };
 
     // Process faker expressions in variables
     for (const [key, value] of Object.entries(processedVariables)) {
@@ -201,10 +194,10 @@ export class TemplateProcessor {
     result = result.replace(/\{\{csv:([^}]+)\}\}/g, (match, csvSpec) => {
       try {
         const value = this.processCSVData(csvSpec, enhancedContext);
-        console.log(`📊 VU${vuId} Iter${iteration}: CSV data ${csvSpec} processed`);
+        logger.debug(`VU${vuId} Iter${iteration}: CSV data ${csvSpec} processed`);
         return typeof value === 'string' ? value : JSON.stringify(value);
       } catch (error) {
-        console.warn(`Failed to process CSV data "${csvSpec}":`, error);
+        logger.warn(`Failed to process CSV data "${csvSpec}":`, error);
         return match;
       }
     });
@@ -213,12 +206,12 @@ export class TemplateProcessor {
     result = result.replace(/\{\{template:([^}]+)\}\}/g, (match, templateSpec) => {
       try {
         const value = this.processHandlebarsTemplate(templateSpec, enhancedContext);
-        console.log(`🎨 VU${vuId} Iter${iteration}: Handlebars template ${templateSpec} processed`);
+        logger.debug(`VU${vuId} Iter${iteration}: Handlebars template ${templateSpec} processed`);
         // The value is already a minified JSON string, return it directly
         // No need to JSON.stringify again as that would double-escape
         return value;
       } catch (error) {
-        console.warn(`Failed to process Handlebars template "${templateSpec}":`, error);
+        logger.warn(`Failed to process Handlebars template "${templateSpec}":`, error);
         return match;
       }
     });
@@ -246,10 +239,10 @@ export class TemplateProcessor {
     result = result.replace(/\{\{(faker\.[^}]+)\}\}/g, (match, expression) => {
       try {
         const value = this.evaluateFakerExpression(expression);
-        console.log(`🎭 VU${vuId} Iter${iteration}: ${expression} -> "${value}"`);
+        logger.debug(`VU${vuId} Iter${iteration}: ${expression} -> "${value}"`);
         return value;
       } catch (error) {
-        console.warn(`Failed to evaluate faker expression "${expression}":`, error);
+        logger.warn(`Failed to evaluate faker expression "${expression}":`, error);
         return match;
       }
     });
@@ -258,10 +251,10 @@ export class TemplateProcessor {
     result = result.replace(/\{\{([a-zA-Z_][a-zA-Z0-9_]*\([^}]*\))\}/g, (match, expression) => {
       try {
         const value = this.evaluateHelperFunction(expression, helpers);
-        console.log(`🔧 VU${vuId} Iter${iteration}: ${expression} -> "${value}"`);
+        logger.debug(`VU${vuId} Iter${iteration}: ${expression} -> "${value}"`);
         return value;
       } catch (error) {
-        console.warn(`Failed to evaluate helper function "${expression}":`, error);
+        logger.warn(`Failed to evaluate helper function "${expression}":`, error);
         return match;
       }
     });
@@ -290,7 +283,12 @@ export class TemplateProcessor {
     // Process special variables
     result = result.replace(/\{\{__VU\}\}/g, () => String(context.__VU || 0));
     result = result.replace(/\{\{__ITER\}\}/g, () => String(context.__ITER || 0));
-    result = result.replace(/\{\{timestamp\}\}/g, () => Date.now().toString());
+    
+    // Enhanced timestamp replacement with file-safe format by default
+    result = result.replace(/\{\{timestamp(?::([^}]+))?\}\}/g, (_match, format) => {
+      const fmt = (format || 'file') as 'unix' | 'iso' | 'readable' | 'file';
+      return TimestampHelper.getTimestamp(fmt);
+    });
 
     return result;
   }
@@ -302,12 +300,7 @@ export class TemplateProcessor {
     // Remove 'faker.' prefix
     const path = expression.replace(/^faker\./, '');
     
-    console.log(`🔍 About to evaluate: "${path}"`);
-    console.log(`🔍 Global locale: ${TemplateProcessor.globalLocale}`);
-    console.log(`🔍 Faker instance type: ${this.fakerInstance.constructor.name}`);
-    console.log(`🔍 Is English faker? ${this.fakerInstance === faker}`);
-    console.log(`🔍 Is German faker? ${this.fakerInstance === TemplateProcessor.availableLocales['de']}`);
-    console.log(`🔍 Current locale instance:`, Object.keys(TemplateProcessor.availableLocales).find(key => TemplateProcessor.availableLocales[key] === this.fakerInstance) || 'unknown');
+    logger.debug(`Evaluating faker expression: "${path}" (locale: ${fakerManager.currentLocale})`);
     
     // Check if it's a function call
     const funcMatch = path.match(/^(.+)\(\)$/);
@@ -317,7 +310,7 @@ export class TemplateProcessor {
       const func = this.getNestedProperty(this.fakerInstance, funcPath);
       if (typeof func === 'function') {
         const result = String(func());
-        console.log(`🔍 Function call ${funcPath}() -> "${result}"`);
+        logger.debug(`Function call ${funcPath}() -> "${result}"`);
         return result;
       }
     } else {
@@ -325,7 +318,7 @@ export class TemplateProcessor {
       const func = this.getNestedProperty(this.fakerInstance, path);
       if (typeof func === 'function') {
         const result = String(func());
-        console.log(`🔍 Property access ${path} -> "${result}"`);
+        logger.debug(`Property access ${path} -> "${result}"`);
         return result;
       }
     }
@@ -351,7 +344,7 @@ export class TemplateProcessor {
     const compiledTemplate = Handlebars.compile(templateContent);
     
     TemplateProcessor.templateCache.set(fullPath, compiledTemplate);
-    console.log(`📝 Template compiled and cached: ${templatePath}`);
+    logger.debug(`Template compiled and cached: ${templatePath}`);
     return compiledTemplate;
   }
 
@@ -454,11 +447,10 @@ export class TemplateProcessor {
       timestamp: Date.now(),
     };
 
-    console.log(`🎨 Processing Handlebars template: ${templateConfig.file}`);
-    console.log(`🎨 Template data:`, JSON.stringify(templateData, null, 2));
+    logger.debug(`Processing Handlebars template: ${templateConfig.file}`);
 
     const result = template(templateData);
-    console.log(`🎨 Raw template result:`, result);
+    logger.debug(`Raw template result: ${result}`);
     
     // If the result looks like JSON, minify it to remove line breaks
     const trimmed = result.trim();
@@ -468,17 +460,17 @@ export class TemplateProcessor {
         // Parse and re-stringify to minify (remove whitespace/line breaks)
         const parsed = JSON.parse(trimmed);
         const minified = JSON.stringify(parsed);
-        console.log(`🎨 Minified JSON result:`, minified);
+        logger.debug(`Minified JSON result: ${minified}`);
         
         // IMPORTANT: When returning JSON as a string to be embedded in another JSON,
         // we need to escape it properly. JSON.stringify will handle the escaping.
         const escaped = JSON.stringify(minified);
         // Remove the outer quotes that JSON.stringify adds
         const escapedContent = escaped.slice(1, -1);
-        console.log(`🎨 Escaped for embedding:`, escapedContent);
+        logger.debug(`Escaped for embedding: ${escapedContent}`);
         return escapedContent;
       } catch (error) {
-        console.warn(`🎨 Failed to minify JSON, returning original:`, error);
+        logger.warn(`Failed to minify JSON, returning original:`, error);
         return result;
       }
     }
@@ -492,7 +484,7 @@ export class TemplateProcessor {
    */
   static clearCache(): void {
     TemplateProcessor.templateCache.clear();
-    console.log('📝 Template cache cleared');
+    logger.debug('Template cache cleared');
   }
 
   /**

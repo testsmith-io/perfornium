@@ -1,5 +1,5 @@
 export interface OutputConfig {
-  type: 'csv' | 'json' | 'influxdb' | 'graphite' | 'webhook';
+  type: 'csv' | 'json' | 'html' | 'influxdb' | 'graphite' | 'webhook';
   enabled?: boolean;
   file?: string;
   url?: string;

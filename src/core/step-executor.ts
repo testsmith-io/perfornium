@@ -1,11 +1,14 @@
-import { Step, VUContext, CheckConfig, ExtractConfig } from '../config/types';
+import { Step, VUContext, CheckConfig, ExtractConfig, RESTStep } from '../config';
 import { ProtocolHandler } from '../protocols/base';
 import { TestResult } from '../metrics/types';
 import { StepHooksManager } from './hooks-manager';
 import { ScriptExecutor } from './script-executor';
+import { ThresholdEvaluator } from './threshold-evaluator';
 import { sleep, parseTime } from '../utils/time';
 import { TemplateProcessor } from '../utils/template';
 import { logger } from '../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class StepExecutor {
   private handlers: Map<string, ProtocolHandler>;
@@ -53,7 +56,7 @@ export class StepExecutor {
         // Merge any variables returned by beforeStep hook
         if (beforeStepResult?.variables) {
           Object.assign(context.variables, beforeStepResult.variables);
-          console.log(`Hook VU${context.vu_id}: beforeStep hook set variables:`, Object.keys(beforeStepResult.variables));
+          logger.debug(`Hook VU${context.vu_id}: beforeStep hook set variables: ${Object.keys(beforeStepResult.variables).join(', ')}`);
         }
       } catch (error) {
         logger.error(`VU ${context.vu_id} beforeStep hook failed:`, error);
@@ -82,18 +85,23 @@ export class StepExecutor {
       }
       
       // Create error result
+      const stepName = step.name || `${step.type}_${context.iteration}`;
+      const iteration = context.iteration || 1;
+      const threadName = `${iteration}. ${stepName} ${context.vu_id}-${iteration}`;
+
       testResult = {
         id: `${context.vu_id}-${Date.now()}`,
         vu_id: context.vu_id,
         iteration: context.iteration,
         scenario: scenarioName,
         action: step.name || step.type || 'rest' ,
-        step_name: step.name || `${step.type}_${context.iteration}`,
+        step_name: stepName,
+        thread_name: threadName,
         timestamp: startTime,
         duration: Date.now() - startTime,
         success: false,
         error: (error as Error).message,
-        shouldRecord: true 
+        shouldRecord: true
       };
       
     } finally {
@@ -119,19 +127,50 @@ export class StepExecutor {
 
     // This should never happen, but TypeScript needs the guarantee
     if (!testResult) {
+      const stepName = step.name || `${step.type}_${context.iteration}`;
+      const iteration = context.iteration || 1;
+      const threadName = `${iteration}. ${stepName} ${context.vu_id}-${iteration}`;
+
       testResult = {
         id: `${context.vu_id}-${Date.now()}`,
         vu_id: context.vu_id,
         iteration: context.iteration,
         scenario: scenarioName,
         action: step.name || step.type || 'rest',
-        step_name: step.name || `${step.type}_${context.iteration}`,
+        step_name: stepName,
+        thread_name: threadName,
         timestamp: startTime,
         duration: Date.now() - startTime,
         success: false,
         error: 'Unknown error occurred',
-        shouldRecord: true 
+        shouldRecord: true
       };
+    }
+
+    // Evaluate thresholds if they are defined for this step
+    if (step.thresholds && step.thresholds.length > 0) {
+      try {
+        const evaluationResult = ThresholdEvaluator.evaluate(
+          step.thresholds,
+          testResult,
+          stepName
+        );
+        
+        if (!evaluationResult.passed) {
+          // Add threshold failures to test result
+          (testResult as any).threshold_failures = evaluationResult.failures;
+          
+          // Execute threshold actions (may throw errors for fail actions)
+          await ThresholdEvaluator.executeThresholdActions(evaluationResult, stepName);
+        }
+      } catch (error) {
+        logger.error(`Threshold evaluation failed for step ${stepName}:`, error);
+        
+        // If threshold action is to fail, we re-throw the error
+        if (error instanceof Error && error.message.includes('threshold violation')) {
+          throw error;
+        }
+      }
     }
 
     return testResult;
@@ -148,13 +187,18 @@ export class StepExecutor {
 
     // Check condition if specified
     if (step.condition && !this.evaluateCondition(step.condition, context)) {
+      const stepName = step.name || `${step.type}_${context.iteration}`;
+      const iteration = context.iteration || 1;
+      const threadName = `${iteration}. ${stepName} ${context.vu_id}-${iteration}`;
+
       return {
         id: `${context.vu_id}-${Date.now()}`,
         vu_id: context.vu_id,
         iteration: context.iteration,
         scenario: scenarioName,
         action: step.name || step.type || 'rest',
-        step_name: step.name || `${step.type}_${context.iteration}`,
+        step_name: stepName,
+        thread_name: threadName,
         timestamp: startTime,
         duration: 0,
         success: true,
@@ -180,23 +224,36 @@ export class StepExecutor {
         result = await this.executeCustomStep(processedStep, context);
         break;
       case 'wait':
-        result = await this.executeWaitStep(processedStep, context);
+        result = await this.executeWaitStep(processedStep);
+        break;
+      case 'script':
+        result = await this.executeScriptStep(processedStep, context);
         break;
       default:
         throw new Error(`Unsupported step type: ${(step as any).type}`);
     }
 
-    const duration = Date.now() - startTime;
-    
+    // Use response_time from handler if available (e.g., web actions with action_time)
+    // Otherwise fall back to total elapsed time
+    const totalElapsed = Date.now() - startTime;
+    const duration = result.response_time !== undefined ? result.response_time : totalElapsed;
+    const stepName = step.name || `${step.type}_${context.iteration}`;
+
+    // Generate JMeter-style thread name: "iteration. step_name vu_id-iteration"
+    const iteration = context.iteration || 1;
+    const threadName = `${iteration}. ${stepName} ${context.vu_id}-${iteration}`;
+
     const testResult: TestResult = {
       id: `${context.vu_id}-${Date.now()}`,
       vu_id: context.vu_id,
       iteration: context.iteration,
       scenario: scenarioName,
       action: step.name || `${step.type}_action`,
-      step_name: step.name || `${step.type}_${context.iteration}`,
+      step_name: stepName,
+      thread_name: threadName,
       timestamp: startTime,
       duration,
+      response_time: duration,  // Add explicit response_time for reporting
       success: result.success,
       status: result.status,
       status_text: result.status_text,
@@ -210,7 +267,20 @@ export class StepExecutor {
       response_headers: result.response_headers,
       response_body: result.response_body,
       custom_metrics: result.custom_metrics,
-      shouldRecord: this.shouldRecordStep(step, true)
+      shouldRecord: result.shouldRecord !== undefined ? result.shouldRecord : this.shouldRecordStep(step, true),
+
+      // JMeter-style timing breakdown
+      sample_start: result.sample_start,
+      connect_time: result.connect_time,
+      latency: result.latency,
+
+      // JMeter-style size breakdown
+      sent_bytes: result.sent_bytes,
+      headers_size_sent: result.headers_size_sent,
+      body_size_sent: result.body_size_sent,
+      headers_size_received: result.headers_size_received,
+      body_size_received: result.body_size_received,
+      data_type: result.data_type,
     };
 
     // Run checks if configured
@@ -259,7 +329,126 @@ export class StepExecutor {
     if (!handler) {
       throw new Error('REST handler not available');
     }
-    return handler.execute(step, context);
+
+    // Handle jsonFile loading with optional overrides
+    const processedStep = this.processJsonFile(step, context);
+
+    return handler.execute(processedStep, context);
+  }
+
+  /**
+   * Load JSON payload from file and apply overrides
+   * Supports dot notation for nested paths in overrides
+   */
+  private processJsonFile(step: RESTStep, context: VUContext): RESTStep {
+    if (!step.jsonFile) {
+      return step;
+    }
+
+    // Resolve file path relative to CWD
+    const filePath = path.resolve(process.cwd(), step.jsonFile);
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`JSON payload file not found: ${step.jsonFile}`);
+    }
+
+    // Load and parse JSON file
+    let payload: any;
+    try {
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      payload = JSON.parse(fileContent);
+    } catch (error: any) {
+      throw new Error(`Failed to parse JSON file ${step.jsonFile}: ${error.message}`);
+    }
+
+    // Apply overrides if specified
+    if (step.overrides) {
+      payload = this.applyOverrides(payload, step.overrides, context);
+    }
+
+    // Return new step with json property set (removing jsonFile and overrides)
+    const { jsonFile, overrides, ...restOfStep } = step;
+    return {
+      ...restOfStep,
+      json: payload
+    };
+  }
+
+  /**
+   * Apply overrides to a JSON object using dot notation for nested paths
+   * Override values are processed through the template processor
+   */
+  private applyOverrides(obj: any, overrides: Record<string, any>, context: VUContext): any {
+    // Deep clone the object to avoid mutating the original
+    const result = JSON.parse(JSON.stringify(obj));
+
+    const contextData = {
+      __VU: context.vu_id,
+      __ITER: context.iteration,
+      vu_id: context.vu_id,
+      iteration: context.iteration,
+      variables: context.variables || {},
+      extracted_data: context.extracted_data || {},
+      ...context.variables,
+      ...context.extracted_data
+    };
+
+    for (const [path, value] of Object.entries(overrides)) {
+      // Process template expressions in override values
+      let processedValue = value;
+      if (typeof value === 'string') {
+        processedValue = this.templateProcessor.process(value, contextData);
+        // Try to parse as JSON if it looks like a number, boolean, or object
+        if (processedValue === 'true') processedValue = true;
+        else if (processedValue === 'false') processedValue = false;
+        else if (!isNaN(Number(processedValue)) && processedValue !== '') {
+          processedValue = Number(processedValue);
+        }
+      }
+
+      this.setNestedValue(result, path, processedValue);
+    }
+
+    return result;
+  }
+
+  /**
+   * Set a value at a nested path using dot notation
+   * Example: setNestedValue(obj, 'user.profile.name', 'John')
+   */
+  private setNestedValue(obj: any, path: string, value: any): void {
+    const keys = path.split('.');
+    let current = obj;
+
+    for (let i = 0; i < keys.length - 1; i++) {
+      const key = keys[i];
+
+      // Handle array indices like 'items[0]'
+      const arrayMatch = key.match(/^(.+)\[(\d+)]$/);
+      if (arrayMatch) {
+        const [, prop, index] = arrayMatch;
+        if (!current[prop]) current[prop] = [];
+        if (!current[prop][parseInt(index)]) current[prop][parseInt(index)] = {};
+        current = current[prop][parseInt(index)];
+      } else {
+        if (!current[key] || typeof current[key] !== 'object') {
+          current[key] = {};
+        }
+        current = current[key];
+      }
+    }
+
+    const lastKey = keys[keys.length - 1];
+
+    // Handle array index in last key
+    const arrayMatch = lastKey.match(/^(.+)\[(\d+)]$/);
+    if (arrayMatch) {
+      const [, prop, index] = arrayMatch;
+      if (!current[prop]) current[prop] = [];
+      current[prop][parseInt(index)] = value;
+    } else {
+      current[lastKey] = value;
+    }
   }
 
   private async executeSOAPStep(step: any, context: VUContext): Promise<any> {
@@ -297,15 +486,104 @@ export class StepExecutor {
     }
   }
 
-  private async executeWaitStep(step: any, context: VUContext): Promise<any> {
+  private async executeWaitStep(step: any): Promise<any> {
     const duration = parseTime(step.duration);
     await sleep(duration);
-    
+
     return {
       success: true,
       data: { waited: duration },
       custom_metrics: { wait_duration: duration }
     };
+  }
+
+  private async executeScriptStep(step: any, context: VUContext): Promise<any> {
+    const { file, function: funcName, params, returns, timeout = 30000 } = step;
+    const path = require('path');
+    const fs = require('fs');
+
+    try {
+      // Resolve file path relative to current working directory
+      const filePath = path.resolve(process.cwd(), file);
+
+      // Load the module (supports both .ts and .js)
+      let module: any;
+      try {
+        if (filePath.endsWith('.ts')) {
+          // Transpile TypeScript on the fly using esbuild
+          const esbuild = require('esbuild');
+          const source = fs.readFileSync(filePath, 'utf-8');
+
+          const result = esbuild.transformSync(source, {
+            loader: 'ts',
+            format: 'cjs',
+            target: 'node18'
+          });
+
+          // Create a temporary module from the transpiled code
+          const Module = require('module');
+          const tempModule = new Module(filePath);
+          tempModule.filename = filePath;
+          tempModule.paths = Module._nodeModulePaths(path.dirname(filePath));
+          tempModule._compile(result.code, filePath);
+          module = tempModule.exports;
+        } else {
+          // For JS files, clear require cache and load directly
+          delete require.cache[require.resolve(filePath)];
+          module = require(filePath);
+        }
+      } catch (loadError: any) {
+        throw new Error(`Failed to load script file '${file}': ${loadError.message}`);
+      }
+
+      // Get the function from the module
+      const fn = module[funcName] || module.default?.[funcName];
+      if (typeof fn !== 'function') {
+        throw new Error(`Function '${funcName}' not found in '${file}'`);
+      }
+
+      // Build parameters with context available
+      const execParams = {
+        ...params,
+        __context: context,
+        __variables: context.variables,
+        __extracted_data: context.extracted_data,
+        __vu_id: context.vu_id,
+        __iteration: context.iteration
+      };
+
+      // Execute the function with timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Script execution timeout (${timeout}ms)`)), timeout);
+      });
+
+      const resultPromise = Promise.resolve(fn(execParams));
+      const result = await Promise.race([resultPromise, timeoutPromise]);
+
+      // Store return value if specified
+      if (returns && result !== undefined) {
+        context.extracted_data[returns] = result;
+      }
+
+      return {
+        success: true,
+        data: result,
+        custom_metrics: {
+          script_file: file,
+          script_function: funcName,
+          has_return_value: result !== undefined
+        }
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+        custom_metrics: {
+          script_file: file,
+          script_function: funcName
+        }
+      };
+    }
   }
 
   private async executeScript(script: string, context: VUContext, timeout: number): Promise<any> {
@@ -344,15 +622,15 @@ export class StepExecutor {
       ...context.extracted_data
     };
     
-    console.log(`StepExecutor processing template for VU${context.vu_id} Iter${context.iteration}`);
-    console.log(`Context data:`, contextData);
-    
+    logger.debug(`StepExecutor processing template for VU${context.vu_id} Iter${context.iteration}`);
+    logger.debug(`Context data: ${JSON.stringify(contextData)}`);
+
     const stepStr = JSON.stringify(step);
-    console.log(`Original step JSON:`, stepStr);
-    
+    logger.debug(`Original step JSON: ${stepStr}`);
+
     const processed = this.templateProcessor.process(stepStr, contextData);
-    console.log(`Raw processed result:`, processed);
-    console.log(`Processed result type:`, typeof processed);
+    logger.debug(`Raw processed result: ${processed}`);
+    logger.debug(`Processed result type: ${typeof processed}`);
     
     let processedStep: Step;
     
@@ -363,14 +641,14 @@ export class StepExecutor {
         processedStep = processed as Step;
       }
     } catch (error) {
-      console.error(`JSON parsing failed in StepExecutor:`);
-      console.error(`Processed content (first 500 chars):`, processed.substring(0, 500));
-      console.error(`Error:`, error);
-      
+      logger.error(`JSON parsing failed in StepExecutor`);
+      logger.error(`Processed content (first 500 chars): ${processed.substring(0, 500)}`);
+      logger.error(`Error: ${error}`);
+
       throw new Error(`Failed to parse processed step JSON: ${error}`);
     }
-    
-    console.log(`Successfully parsed step:`, JSON.stringify(processedStep));
+
+    logger.debug(`Successfully parsed step: ${JSON.stringify(processedStep)}`);
     return processedStep;
   }
 

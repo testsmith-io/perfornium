@@ -1,4 +1,60 @@
-.idea
-dist
-tmp
-node_modules
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+build/
+*.tgz
+*.vsix
+vscode-extension/out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts (should be in tmp/test-project/)
+*.csv
+*.json
+*.html
+!package.json
+!package-lock.json
+!tsconfig.json
+!vitest.config.ts
+
+# Test results
+results/
+coverage/
+screenshots/
+.nyc_output/
+
+# Temporary files
+tmp/
+*.log
+
+# Local development
+.env
+.env.local
+.env.*.local
+
+# Generated files
+*.js.map
+*.d.ts.map
+
+# Keep important files
+!src/**/*.ts
+!examples/**/*.ts
+!examples/**/*.yml
+!tmp/test-project/**/*
+.docs

@@ -3,15 +3,7 @@ import * as http from 'http';
 import { URL } from 'url';
 import { TestRunner } from '../../core/test-runner';
 import { TestConfiguration } from '../../config/types';
-
-interface WorkerStatus {
-  connected: boolean;
-  running: boolean;
-  virtualUsers: number;
-  requestsPerSecond: number;
-  responseTime: number;
-  errorRate: number;
-}
+import { WorkerStatus } from '../../distributed/remote-worker';
 
 export class WorkerServer {
   private server: http.Server;
@@ -150,7 +142,9 @@ export class WorkerServer {
 
       this.activeRunner = new TestRunner(this.preparedConfig);
       this.status.running = true;
-      this.status.virtualUsers = this.preparedConfig.load.virtual_users || 1;
+      const { getPrimaryLoadPhase } = await import('../../config/types/load-config');
+      const primaryPhase = getPrimaryLoadPhase(this.preparedConfig.load);
+      this.status.virtualUsers = primaryPhase.virtual_users || primaryPhase.vus || 1;
 
       logger.info(`🚀 Starting test: ${this.preparedConfig.name}`);
 

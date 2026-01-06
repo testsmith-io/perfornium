@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as Handlebars from 'handlebars';
-import { faker } from '@faker-js/faker';
+import { getFaker } from './faker-manager';
+import { logger } from './logger';
 
 export interface TemplateConfig {
   file: string;
@@ -36,24 +37,24 @@ export class HandlebarsTemplateManager {
    * Register default Handlebars helpers for faker and utilities
    */
   private registerDefaultHelpers(): void {
-    // Faker helpers
+    // Faker helpers - lazily load faker only when helper is called
     Handlebars.registerHelper('faker', (path: string) => {
-      return this.getNestedProperty(faker, path)();
+      return this.getNestedProperty(getFaker(), path)();
     });
 
     // Random helpers
     Handlebars.registerHelper('randomInt', (min: number, max: number) => {
-      return faker.number.int({ min, max });
+      return getFaker().number.int({ min, max });
     });
 
     Handlebars.registerHelper('randomChoice', (...args) => {
       // Remove the last argument (Handlebars options)
       const choices = args.slice(0, -1);
-      return faker.helpers.arrayElement(choices);
+      return getFaker().helpers.arrayElement(choices);
     });
 
     Handlebars.registerHelper('uuid', () => {
-      return faker.string.uuid();
+      return getFaker().string.uuid();
     });
 
     Handlebars.registerHelper('timestamp', () => {
@@ -123,8 +124,8 @@ export class HandlebarsTemplateManager {
       timestamp: Date.now(),
     };
 
-    console.log(`🎨 Processing Handlebars template: ${templateConfig.file}`);
-    console.log(`🎨 Template data:`, JSON.stringify(templateData, null, 2));
+    logger.debug(`Processing Handlebars template: ${templateConfig.file}`);
+    logger.debug(`Template data: ${JSON.stringify(templateData, null, 2)}`);
 
     const result = template(templateData);
     
@@ -136,7 +137,7 @@ export class HandlebarsTemplateManager {
         return JSON.parse(result);
       }
       return result;
-    } catch (error) {
+    } catch {
       // If JSON parsing fails, return as string
       return result;
     }

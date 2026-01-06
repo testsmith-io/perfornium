@@ -169,8 +169,8 @@ export class WorkerServer {
   async stop(): Promise<void> {
     return new Promise((resolve) => {
       // Stop all active tests
-      for (const [ws, runner] of this.activeRunners) {
-        runner.stop().catch(err => 
+      for (const [, runner] of this.activeRunners) {
+        runner.stop().catch(err =>
           logger.error('❌ Error stopping runner:', err)
         );
       }

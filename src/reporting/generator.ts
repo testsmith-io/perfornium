@@ -82,7 +82,7 @@ export class HTMLReportGenerator {
 
       // Enhanced chart data with new features
       const stepStatistics = this.calculateStepStatistics(data.results);
-      const vuRampupData = this.calculateVURampupData(data.results);
+      const vuRampupData = this.calculateVURampupData(data.results, data.summary.vu_ramp_up || []);
       const timelineData = this.calculateTimelineData(data.results);
       const stepResponseTimes = this.calculateStepResponseTimes(data.results);
       
@@ -278,17 +278,55 @@ export class HTMLReportGenerator {
     }
   }
 
-  private calculateVURampupData(results: TestResult[]): any[] {
-    const timeGroups = StatisticsCalculator.groupResultsByTime(results, 1000); // 1 second intervals
+  private calculateVURampupData(results: TestResult[], vuStartEvents: any[] = []): any[] {
+    // Calculate total unique VUs
+    const totalVUs = vuStartEvents.length > 0
+      ? vuStartEvents.length
+      : new Set(results.map(r => r.vu_id)).size;
 
-    return timeGroups.map(group => ({
-      timestamp: group.timestamp,
-      active_vus: group.concurrent_users || this.estimateActiveVUs(group.timestamp, results)
-    }));
+    const vuRampupData: Array<{time: number, timestamp: number, count: number}> = [];
+
+    // Determine test time range
+    const testStartTime = vuStartEvents.length > 0
+      ? Math.min(...vuStartEvents.map(vu => vu.start_time))
+      : (results.length > 0 ? Math.min(...results.map(r => r.timestamp)) : Date.now());
+    const testEndTime = results.length > 0
+      ? Math.max(...results.map(r => r.timestamp))
+      : testStartTime + 60000;
+
+    // Create time buckets for the entire test duration (1 second intervals)
+    const timeInterval = 1000;
+    const sortedVUEvents = vuStartEvents.length > 0
+      ? [...vuStartEvents].sort((a, b) => a.start_time - b.start_time)
+      : [];
+
+    for (let t = testStartTime; t <= testEndTime; t += timeInterval) {
+      let activeVUs: number;
+
+      if (sortedVUEvents.length > 0) {
+        // Count VUs that have started by this time
+        activeVUs = sortedVUEvents.filter(vu => vu.start_time <= t).length;
+      } else {
+        // Fallback: count unique VU IDs from results up to this time
+        const resultsUpToNow = results.filter(r => r.timestamp <= t);
+        activeVUs = new Set(resultsUpToNow.map(r => r.vu_id)).size;
+      }
+
+      vuRampupData.push({
+        time: (t - testStartTime) / 1000,
+        timestamp: t,
+        count: Math.min(activeVUs, totalVUs)
+      });
+    }
+
+    return vuRampupData;
   }
 
   private calculateTimelineData(results: TestResult[]): any[] {
     const timeGroups = StatisticsCalculator.groupResultsByTime(results, 5000); // 5 second intervals
+
+    // Calculate total unique VUs to cap the count and prevent spikes
+    const totalVUs = new Set(results.map(r => r.vu_id)).size;
 
     return timeGroups.map(group => {
       const groupResults = results.filter(r =>
@@ -299,9 +337,13 @@ export class HTMLReportGenerator {
       const avgResponseTime = successfulResults.length > 0 ?
         successfulResults.reduce((sum, r) => sum + r.duration, 0) / successfulResults.length : 0;
 
+      let activeVUs = group.concurrent_users || this.estimateActiveVUs(group.timestamp, results);
+      // Cap at total VUs to prevent end-of-test spikes
+      activeVUs = Math.min(activeVUs, totalVUs);
+
       return {
         timestamp: group.timestamp,
-        active_vus: group.concurrent_users || this.estimateActiveVUs(group.timestamp, results),
+        active_vus: activeVUs,
         avg_response_time: avgResponseTime,
         success_rate: groupResults.length > 0 ? (successfulResults.length / groupResults.length) * 100 : 0,
         throughput: group.requests_per_second || (groupResults.length / 5) // requests per second
@@ -412,7 +454,6 @@ export class HTMLReportGenerator {
     return Object.entries(stepGroups).map(([stepName, stepData]) => {
       // Extract just response times for statistics
       const responseTimes = stepData.map(item => item.duration);
-      const sorted = [...responseTimes].sort((a, b) => a - b);
       const avg = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
       const min = Math.min(...responseTimes);
       const max = Math.max(...responseTimes);

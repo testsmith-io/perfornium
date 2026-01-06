@@ -1,5 +1,5 @@
 import { LoadPattern, VUFactory } from './base';
-import { VirtualUser } from '../core/virtual-user';
+import { VirtualUser } from '../core';
 import { parseTime, sleep } from '../utils/time';
 import { logger } from '../utils/logger';
 
@@ -26,9 +26,13 @@ export class BasicPattern implements LoadPattern {
           
           try {
             // CRITICAL: Await VU creation to ensure CSV initialization
-            console.log(`🔧 Creating VU ${i + 1}...`);
+            logger.debug(`Creating VU ${i + 1}...`);
             const vu = await this.createVU(vuFactory, i + 1);
-            console.log(`✅ VU ${i + 1} ready`);
+            logger.debug(`VU ${i + 1} ready`);
+
+            // Record VU start for metrics and reporting
+            const metrics = vuFactory.getMetrics();
+            metrics.recordVUStart(vu.getId());
 
             logger.debug(`👤 Started VU ${vu.getId()}`);
 

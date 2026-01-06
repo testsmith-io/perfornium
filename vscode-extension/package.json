@@ -1,0 +1,155 @@
+{
+  "name": "perfornium",
+  "displayName": "Perfornium",
+  "description": "Language support and test runner for Perfornium load testing framework",
+  "version": "1.0.0",
+  "publisher": "testsmith",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/testsmith-io/perfornium"
+  },
+  "homepage": "https://github.com/testsmith-io/perfornium",
+  "bugs": {
+    "url": "https://github.com/testsmith-io/perfornium/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Testing"
+  ],
+  "keywords": [
+    "perfornium",
+    "load testing",
+    "performance testing",
+    "api testing",
+    "playwright",
+    "yaml"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.perfornium.yml",
+    "workspaceContains:**/*.perfornium.yaml",
+    "workspaceContains:**/*.perfornium.ts",
+    "workspaceContains:**/perfornium.yml",
+    "workspaceContains:**/perfornium.yaml",
+    "onLanguage:perfornium-yaml",
+    "onLanguage:yaml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "perfornium-yaml",
+        "aliases": ["Perfornium YAML", "perfornium"],
+        "extensions": [".perfornium.yml", ".perfornium.yaml"],
+        "filenames": ["perfornium.yml", "perfornium.yaml"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "perfornium-yaml",
+        "scopeName": "source.perfornium.yaml",
+        "path": "./syntaxes/perfornium.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "perfornium-yaml",
+        "path": "./snippets/perfornium-snippets.json"
+      },
+      {
+        "language": "yaml",
+        "path": "./snippets/perfornium-snippets.json"
+      }
+    ],
+    "configuration": {
+      "title": "Perfornium",
+      "properties": {
+        "perfornium.autoComplete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable autocomplete for Perfornium YAML files"
+        },
+        "perfornium.validation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable validation for Perfornium configuration files"
+        },
+        "perfornium.cliPath": {
+          "type": "string",
+          "default": "perfornium",
+          "description": "Path to the Perfornium CLI executable"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "perfornium.runTest",
+        "title": "Run Perfornium Test",
+        "category": "Perfornium",
+        "icon": "$(play)"
+      },
+      {
+        "command": "perfornium.debugTest",
+        "title": "Debug Perfornium Test",
+        "category": "Perfornium",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "perfornium.validateConfig",
+        "title": "Validate Perfornium Configuration",
+        "category": "Perfornium",
+        "icon": "$(check)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "perfornium.runTest",
+          "when": "resourceExtname == .yml || resourceExtname == .yaml",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "perfornium.runTest",
+          "when": "resourceExtname == .yml || resourceExtname == .yaml",
+          "group": "perfornium"
+        },
+        {
+          "command": "perfornium.validateConfig",
+          "when": "resourceExtname == .yml || resourceExtname == .yaml",
+          "group": "perfornium"
+        }
+      ],
+      "testing/item/context": [
+        {
+          "command": "perfornium.runTest",
+          "when": "testId =~ /perfornium/"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.3.8",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "yaml": "^2.3.4"
+  }
+}

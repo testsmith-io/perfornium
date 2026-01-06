@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { HTMLReportGenerator } from '../../reporting/generator';
+import { EnhancedHTMLReportGenerator } from '../../reporting/enhanced-html-generator';
 import { logger } from '../../utils/logger';
 
 export async function reportCommand(
@@ -29,26 +29,15 @@ export async function reportCommand(
       process.exit(1);
     }
     
-    const generator = new HTMLReportGenerator();
+    const generator = new EnhancedHTMLReportGenerator();
     const outputPath = options.output || 'report.html';
-    
-    const reportConfig = {
-      generate: true,
-      output: outputPath,
-      template: options.template,
-      title: options.title,
-      percentiles: [50, 90, 95, 99],
-      include_charts: true,
-      include_raw_data: false
-    };
-    
+
     await generator.generate(
       {
         testName: options.title || resultsData.testName || 'Performance Test',
         summary: resultsData.summary,
         results: resultsData.results || []
       },
-      reportConfig,
       outputPath
     );
     

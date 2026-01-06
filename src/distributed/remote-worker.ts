@@ -234,14 +234,6 @@ export class RemoteWorker extends EventEmitter {
     return this.config.region;
   }
 
-  isConnected(): boolean {
-    return this.connected;
-  }
-
-  getConfig(): RemoteWorkerConfig {
-    return { ...this.config };
-  }
-
   async getResults(): Promise<any> {
     if (!this.connected) {
       throw new Error(`Worker ${this.getAddress()} not connected`);
