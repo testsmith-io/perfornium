@@ -27,7 +27,6 @@ Thumbs.db
 # Test artifacts (should be in tmp/test-project/)
 *.csv
 *.json
-*.html
 !package.json
 !package-lock.json
 !tsconfig.json
