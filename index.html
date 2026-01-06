@@ -527,84 +527,73 @@
             </div>
 
             <div id="yaml-tab" class="code-block">
-                    <pre><span class="comment"># perfornium.yml - Simple load test configuration</span>
-<span class="property">scenario</span>:
-  <span class="property">name</span>: <span class="string">"E-commerce Load Test"</span>
+                    <pre><span class="comment"># load-test.yml - Simple load test configuration</span>
+<span class="property">name</span>: <span class="string">"E-commerce Load Test"</span>
+
+<span class="property">global</span>:
+  <span class="property">base_url</span>: <span class="string">"https://api.example.com"</span>
+
+<span class="property">load</span>:
+  <span class="property">pattern</span>: <span class="string">"basic"</span>
+  <span class="property">virtual_users</span>: <span class="number">50</span>
   <span class="property">duration</span>: <span class="string">"5m"</span>
-  <span class="property">users</span>: <span class="number">50</span>
+  <span class="property">ramp_up</span>: <span class="string">"30s"</span>
 
-<span class="property">steps</span>:
-  - <span class="property">name</span>: <span class="string">"Login"</span>
-    <span class="property">action</span>: <span class="string">"api"</span>
-    <span class="property">url</span>: <span class="string">"/api/auth/login"</span>
-    <span class="property">method</span>: <span class="string">"POST"</span>
-    <span class="property">data</span>:
-      <span class="property">email</span>: <span class="string">"{{faker.internet.email}}"</span>
-      <span class="property">password</span>: <span class="string">"{{faker.internet.password}}"</span>
-
-  - <span class="property">name</span>: <span class="string">"Browse Products"</span>
-    <span class="property">action</span>: <span class="string">"playwright"</span>
-    <span class="property">script</span>: <span class="string">"browse-products.js"</span>
-    <span class="property">threshold</span>:
-      <span class="property">response_time</span>: <span class="string">"2s"</span></pre>
+<span class="property">scenarios</span>:
+  - <span class="property">name</span>: <span class="string">"user_journey"</span>
+    <span class="property">steps</span>:
+      - <span class="property">name</span>: <span class="string">"login"</span>
+        <span class="property">type</span>: <span class="string">"rest"</span>
+        <span class="property">method</span>: <span class="string">"POST"</span>
+        <span class="property">path</span>: <span class="string">"/auth/login"</span>
+        <span class="property">json</span>:
+          <span class="property">email</span>: <span class="string">"{{faker.internet.email}}"</span>
+          <span class="property">password</span>: <span class="string">"{{faker.internet.password}}"</span>
+        <span class="property">checks</span>:
+          - <span class="property">type</span>: <span class="string">"status"</span>
+            <span class="property">value</span>: <span class="number">200</span></pre>
             </div>
 
             <div id="typescript-tab" class="code-block" style="display: none;">
-                    <pre><span class="comment">// Advanced TypeScript scenario</span>
-<span class="keyword">import</span> { <span class="variable">defineScenario</span> } <span
-                                class="keyword">from</span> <span class="string">'perfornium'</span>;
-<span class="keyword">import</span> { <span class="variable">faker</span> } <span class="keyword">from</span> <span
-                                class="string">'@faker-js/faker'</span>;
+                    <pre><span class="comment">// Advanced TypeScript scenario with fluent DSL</span>
+<span class="keyword">import</span> { <span class="variable">test</span>, <span class="variable">load</span>, <span class="variable">testData</span> } <span class="keyword">from</span> <span class="string">'perfornium'</span>;
 
-<span class="keyword">export default</span> <span class="function">defineScenario</span>({
-  <span class="property">name</span>: <span class="string">'Advanced E-commerce Test'</span>,
-  <span class="property">duration</span>: <span class="string">'10m'</span>,
-  <span class="property">users</span>: <span class="number">100</span>,
-
-  <span class="keyword">async</span> <span class="function">setup</span>() {
-    <span class="comment">// Custom setup logic</span>
-    <span class="keyword">return</span> { <span class="property">baseUrl</span>: process.<span
-                                class="property">env</span>.<span class="property">TEST_URL</span> };
-  },
-
-  <span class="keyword">async</span> <span class="function">scenario</span>({ <span class="variable">page</span>, <span
-                                class="variable">api</span>, <span class="variable">context</span> }) {
-    <span class="comment">// Generate realistic user data</span>
-    <span class="keyword">const</span> <span class="variable">user</span> = {
-      <span class="property">email</span>: faker.<span class="property">internet</span>.<span
-                                class="function">email</span>(),
-      <span class="property">name</span>: faker.<span class="property">person</span>.<span
-                                class="function">fullName</span>(),
-      <span class="property">creditCard</span>: faker.<span class="property">finance</span>.<span class="function">creditCardNumber</span>()
-    };
-
-    <span class="comment">// API login</span>
-    <span class="keyword">await</span> api.<span class="function">post</span>(<span
-                                class="string">'/api/auth/login'</span>, user);
-
-    <span class="comment">// Browser automation</span>
-    <span class="keyword">await</span> page.<span class="function">goto</span>(<span class="string">'/products'</span>);
-    <span class="keyword">await</span> page.<span class="function">click</span>(<span class="string">'[data-testid="add-to-cart"]'</span>);
-    <span class="keyword">await</span> page.<span class="function">click</span>(<span class="string">'[data-testid="checkout"]'</span>);
-  }
-});</pre>
+<span class="keyword">const</span> <span class="variable">config</span> = <span class="function">test</span>(<span class="string">'E-commerce Load Test'</span>)
+  .<span class="function">baseUrl</span>(<span class="string">'https://api.example.com'</span>)
+  .<span class="function">withBrowser</span>(<span class="string">'chromium'</span>, { <span class="property">headless</span>: <span class="keyword">true</span> })
+  .<span class="function">scenario</span>(<span class="string">'User Journey'</span>)
+    .<span class="function">post</span>(<span class="string">'/auth/login'</span>, {
+      <span class="property">email</span>: <span class="function">testData</span>.<span class="function">email</span>(),
+      <span class="property">password</span>: <span class="function">testData</span>.<span class="function">password</span>()
+    })
+    .<span class="function">check</span>(<span class="string">'status'</span>, <span class="number">200</span>)
+    .<span class="function">extract</span>(<span class="string">'token'</span>, <span class="string">'$.access_token'</span>)
+    .<span class="function">goto</span>(<span class="string">'/products'</span>)
+    .<span class="function">click</span>(<span class="string">'[data-testid="add-to-cart"]'</span>)
+    .<span class="function">expectVisible</span>(<span class="string">'#cart-count'</span>)
+    .<span class="function">done</span>()
+  .<span class="function">withLoad</span>(<span class="function">load</span>().<span class="function">virtualUsers</span>(<span class="number">50</span>).<span class="function">duration</span>(<span class="string">'5m'</span>))
+  .<span class="function">withReport</span>(<span class="string">'reports/load-test.html'</span>)
+  .<span class="function">build</span>();</pre>
             </div>
             <div id="cli-tab" class="code-block" style="display: none;">
-    <pre><span class="comment"># Record user interactions to generate test scenarios</span>
-<span class="keyword">perfornium</span> <span class="function">record</span> <span
-                class="string">http://localhost</span> <span class="variable">-o</span> <span
-                class="string">login.yml</span>
+    <pre><span class="comment"># Initialize a new test project</span>
+<span class="keyword">perfornium</span> <span class="function">init</span> <span class="variable">--template</span> <span class="string">api</span>
 
-<span class="comment"># Run a performance test scenario</span>
-<span class="keyword">perfornium</span> <span class="function">run</span> <span class="string">tests/login.yml</span>
+<span class="comment"># Record user interactions to generate test scenarios</span>
+<span class="keyword">perfornium</span> <span class="function">record</span> <span class="string">http://localhost:3000</span> <span class="variable">-o</span> <span class="string">tests/web/login.yml</span>
+
+<span class="comment"># Import OpenAPI spec to generate tests</span>
+<span class="keyword">perfornium</span> <span class="function">import openapi</span> <span class="string">api-spec.yaml</span> <span class="variable">-o</span> <span class="string">tests/api</span>
+
+<span class="comment"># Run a performance test with HTML report</span>
+<span class="keyword">perfornium</span> <span class="function">run</span> <span class="string">tests/load-test.yml</span> <span class="variable">--report</span>
 
 <span class="comment"># Start a worker node for distributed testing</span>
-<span class="keyword">perfornium</span> <span class="function">worker</span> <span class="variable">--port</span> <span
-                class="number">8080</span>
+<span class="keyword">perfornium</span> <span class="function">worker</span> <span class="variable">-p</span> <span class="number">8080</span>
 
 <span class="comment"># Run distributed test across multiple workers</span>
-<span class="keyword">perfornium</span> <span class="function">distributed</span> <span
-                class="string">tests/login.yml</span> <span class="variable">--workers</span> <span class="string">127.0.0.1:8080</span></pre>
+<span class="keyword">perfornium</span> <span class="function">distributed</span> <span class="string">tests/load-test.yml</span> <span class="variable">-w</span> <span class="string">192.168.1.10:8080,192.168.1.11:8080</span></pre>
             </div>
         </div>
     </section>
@@ -650,23 +639,6 @@
             navLinks.classList.remove('active');
         }
     });
-
-    function showTab(tabName) {
-        // Hide all tabs
-        document.getElementById('yaml-tab').style.display = 'none';
-        document.getElementById('typescript-tab').style.display = 'none';
-
-        // Remove active class from all buttons
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-
-        // Show selected tab
-        document.getElementById(tabName + '-tab').style.display = 'block';
-
-        // Add active class to clicked button
-        event.target.classList.add('active');
-    }
 
     function showTab(tabName) {
         // Hide all tabs
