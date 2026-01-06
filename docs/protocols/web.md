@@ -518,6 +518,50 @@ extract:
 
 ## Validation and Assertions
 
+### Inline Verification Steps
+
+Use verification commands directly in your test steps:
+
+```yaml
+steps:
+  # Verify element exists
+  - name: "Check Success Message Exists"
+    type: "web"
+    action:
+      command: "verify_exists"
+      selector: ".success-message"
+
+  # Verify element is visible
+  - name: "Check Modal is Visible"
+    type: "web"
+    action:
+      command: "verify_visible"
+      selector: "#confirmation-modal"
+
+  # Verify element contains text (uses value property)
+  - name: "Check Alert Message"
+    type: "web"
+    action:
+      command: "verify_contains"
+      selector: "role=alert"
+      value: "Thanks for your message!"
+
+  # Verify exact text match (uses expected_text property)
+  - name: "Check Page Title"
+    type: "web"
+    action:
+      command: "verify_text"
+      selector: "h1"
+      expected_text: "Welcome"
+
+  # Verify element does not exist
+  - name: "Check Error Gone"
+    type: "web"
+    action:
+      command: "verify_not_exists"
+      selector: ".error-message"
+```
+
 ### Element State Checks
 
 ```yaml
@@ -526,12 +570,12 @@ checks:
     selector: ".success-message"
     state: "visible"
     description: "Success message should be visible"
-    
+
   - type: "web_element"
     selector: "#loading"
     state: "hidden"
     description: "Loading indicator should be hidden"
-    
+
   - type: "web_element"
     selector: "input[name='email']"
     state: "enabled"

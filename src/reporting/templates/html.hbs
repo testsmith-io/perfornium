@@ -2308,8 +2308,10 @@
         }
         {{/if}}
 
-        // Connect Time Over Time Chart
-        if (connectTimeData && connectTimeData.length > 0) {
+        // Connect Time Over Time Chart - only show if there's meaningful data
+        const hasConnectTimeData = connectTimeData && connectTimeData.length > 0 &&
+            connectTimeData.some(d => d.avg_connect_time > 0);
+        if (hasConnectTimeData) {
             const connectTimeCtx = document.getElementById('connectTimeChart').getContext('2d');
             new Chart(connectTimeCtx, {
                 type: 'line',
@@ -2370,10 +2372,16 @@
                     }
                 }
             });
+        } else {
+            // Hide connect time chart container if no data
+            const connectTimeContainer = document.getElementById('connectTimeChart')?.closest('.chart-container, .bg-white, [class*="rounded"]');
+            if (connectTimeContainer) connectTimeContainer.style.display = 'none';
         }
 
-        // Latency Over Time Chart
-        if (latencyData && latencyData.length > 0) {
+        // Latency Over Time Chart - only show if there's meaningful data
+        const hasLatencyData = latencyData && latencyData.length > 0 &&
+            latencyData.some(d => d.avg_latency > 0);
+        if (hasLatencyData) {
             const latencyCtx = document.getElementById('latencyChart').getContext('2d');
             new Chart(latencyCtx, {
                 type: 'line',
@@ -2434,6 +2442,10 @@
                     }
                 }
             });
+        } else {
+            // Hide latency chart container if no data
+            const latencyContainer = document.getElementById('latencyChart')?.closest('.chart-container, .bg-white, [class*="rounded"]');
+            if (latencyContainer) latencyContainer.style.display = 'none';
         }
     </script>
 </body>

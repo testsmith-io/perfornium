@@ -17,11 +17,15 @@ export async function distributedCommand(
     output?: string;
     report?: boolean;
     verbose?: boolean;
+    debug?: boolean;
   }
 ): Promise<void> {
   try {
-    if (options.verbose) {
+    // Set log level: default=WARN, --verbose=INFO, --debug=DEBUG
+    if (options.debug) {
       logger.setLevel(LogLevel.DEBUG);
+    } else if (options.verbose) {
+      logger.setLevel(LogLevel.INFO);
     }
 
     // Parse test configuration
@@ -123,7 +127,7 @@ export async function distributedCommand(
     
   } catch (error: any) {
     logger.error(`❌ Distributed test failed: ${error.message}`);
-    if (options.verbose) {
+    if (options.verbose || options.debug) {
       console.error(error.stack);
     }
     process.exit(1);
@@ -155,9 +159,17 @@ function parseWorkerConfigs(workersString?: string, workersFile?: string): Remot
     try {
       const fileContent = fs.readFileSync(workersFile, 'utf8');
       const fileWorkers = JSON.parse(fileContent);
-      
+
       if (Array.isArray(fileWorkers)) {
-        workers.push(...fileWorkers);
+        // Apply defaults to workers from file
+        fileWorkers.forEach((w: any) => {
+          workers.push({
+            host: w.host || 'localhost',
+            port: w.port || 8080,
+            capacity: w.capacity ?? 100,  // Default capacity if not specified
+            region: w.region || 'default'
+          });
+        });
       } else {
         throw new Error('Workers file must contain an array of worker configurations');
       }

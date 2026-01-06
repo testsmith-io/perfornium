@@ -13,12 +13,15 @@ import { distributedCommand } from './commands/distributed';
 // Add new import commands
 import { importCommand } from './commands/import';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const packageJson = require('../../package.json');
+
 const program = new Command();
 
 program
     .name('perfornium')
-    .description('Performance testing framework for REST, SOAP, and web applications')
-    .version('1.0.0');
+    .description(packageJson.description)
+    .version(packageJson.version);
 
 program
     .command('run')
@@ -29,7 +32,8 @@ program
     .option('-o, --output <directory>', 'Output directory for results')
     .option('-r, --report', 'Generate HTML report after test')
     .option('--dry-run', 'Validate configuration without running test')
-    .option('-v, --verbose', 'Enable verbose logging')
+    .option('-v, --verbose', 'Enable verbose logging (info level)')
+    .option('-d, --debug', 'Enable debug logging (very detailed)')
     .option('--max-users <number>', 'Maximum virtual users override')
     .option('-g, --global <key=value>', 'Override global config (supports dot notation: browser.headless=false)', collectGlobals, [])
     .action(runCommand);
@@ -51,7 +55,8 @@ program
     .option('--sync-start', 'Synchronize test start across all workers')
     .option('-o, --output <directory>', 'Output directory for results')
     .option('-r, --report', 'Generate HTML report after test')
-    .option('-v, --verbose', 'Enable verbose logging')
+    .option('-v, --verbose', 'Enable verbose logging (info level)')
+    .option('-d, --debug', 'Enable debug logging (very detailed)')
     .action(distributedCommand);
 
 program
@@ -199,6 +204,8 @@ program
     .argument('[directory]', 'Project directory', '.')
     .option('-t, --template <template>', 'Project template (basic|api|web|mixed)', 'basic')
     .option('--examples', 'Include example test configurations')
+    .option('-f, --force', 'Overwrite existing project files')
+    .option('--dry-run', 'Preview files without creating them')
     .action(initCommand);
 
 program

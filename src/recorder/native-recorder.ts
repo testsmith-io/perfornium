@@ -315,27 +315,63 @@ class PlaywrightToPerfornium {
   }
 
   private buildSelector(method: string, args: string): string {
-    // Keep Playwright's native selector format - it's more readable
-    const cleanArgs = args.replace(/['"]/g, '').trim();
-
     switch (method) {
       case 'getByRole':
-        return `role=${cleanArgs}`;
+        return this.parseRoleSelector(args);
       case 'getByText':
-        return `text=${cleanArgs}`;
+        return `text=${this.extractFirstArg(args)}`;
       case 'getByLabel':
-        return `label=${cleanArgs}`;
+        return `label=${this.extractFirstArg(args)}`;
       case 'getByPlaceholder':
-        return `placeholder=${cleanArgs}`;
+        return `placeholder=${this.extractFirstArg(args)}`;
       case 'getByTestId':
-        return `data-testid=${cleanArgs}`;
+        return `[data-testid="${this.extractFirstArg(args)}"]`;
       case 'getByAltText':
-        return `alt=${cleanArgs}`;
+        return `[alt="${this.extractFirstArg(args)}"]`;
       case 'getByTitle':
-        return `title=${cleanArgs}`;
+        return `[title="${this.extractFirstArg(args)}"]`;
       default:
-        return cleanArgs;
+        return args.replace(/['"]/g, '').trim();
     }
+  }
+
+  private extractFirstArg(args: string): string {
+    // Extract first string argument: 'value' or "value"
+    const match = args.match(/['"]([^'"]+)['"]/);
+    return match ? match[1] : args.replace(/['"]/g, '').trim();
+  }
+
+  private parseRoleSelector(args: string): string {
+    // Parse: 'button', { name: 'Submit' } -> role=button[name="Submit"]
+    // Or just: 'button' -> role=button
+    const parts = args.split(',').map(p => p.trim());
+    const role = parts[0].replace(/['"]/g, '');
+
+    if (parts.length === 1) {
+      return `role=${role}`;
+    }
+
+    // Parse the options object: { name: 'Submit', exact: true }
+    const optionsStr = parts.slice(1).join(',');
+    const attributes: string[] = [];
+
+    // Extract name attribute
+    const nameMatch = optionsStr.match(/name:\s*['"]([^'"]+)['"]/);
+    if (nameMatch) {
+      attributes.push(`name="${nameMatch[1]}"`);
+    }
+
+    // Extract other common attributes
+    const exactMatch = optionsStr.match(/exact:\s*(true|false)/);
+    if (exactMatch && exactMatch[1] === 'true') {
+      attributes.push('exact=true');
+    }
+
+    if (attributes.length > 0) {
+      return `role=${role}[${attributes.join('][')}]`;
+    }
+
+    return `role=${role}`;
   }
 
   private buildAction(action: string, selector: string, args: string, lineNum: number): ParsedAction | null {

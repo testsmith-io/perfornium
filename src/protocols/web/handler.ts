@@ -110,6 +110,14 @@ export class WebHandler implements ProtocolHandler {
           }
           break;
 
+        case 'press':
+          {
+            const actionStart = Date.now();
+            result = await this.handlePress(page, action);
+            result.action_time = Date.now() - actionStart;
+          }
+          break;
+
         case 'wait_for_selector':
           {
             const actionStart = Date.now();
@@ -160,6 +168,17 @@ export class WebHandler implements ProtocolHandler {
           );
           result = textMeasured.result;
           verificationMetrics = textMeasured.metrics;
+          break;
+
+        case 'verify_contains':
+          const containsMeasured = await VerificationMetricsCollector.measureVerificationStep(
+            action.verificationName || action.name || 'verify_contains',
+            'verification',
+            () => this.handleVerifyContains(page, action),
+            { selector: action.selector, expected_text: action.value as string }
+          );
+          result = containsMeasured.result;
+          verificationMetrics = containsMeasured.metrics;
           break;
 
         case 'verify_not_exists':
@@ -241,15 +260,28 @@ export class WebHandler implements ProtocolHandler {
       // Or verification metrics duration for verify steps
       const responseTime = result?.action_time || verificationMetrics?.duration;
 
+      // Only record metrics for meaningful performance measurements:
+      // - Verifications (verify_*) - time for elements/text to appear (measures app responsiveness)
+      // - Waits (wait_for_*) - time for conditions to be met
+      // - Performance measurements (measure_*, performance_audit)
+      // NOT recorded: goto, click, fill, press, select, hover, screenshot (navigation/interactions)
+      const measurableCommands = [
+        'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
+        'wait_for_selector', 'wait_for_text',
+        'measure_web_vitals', 'performance_audit'
+      ];
+      const shouldRecord = measurableCommands.includes(action.command);
+
       const enhancedResult: ProtocolResult = {
         success: true,
         data: result,
-        shouldRecord: true,  // Always record web results for Web Vitals
-        response_time: responseTime,  // Actual action time for accurate graphs
+        shouldRecord,  // Only record verifications and navigations for meaningful metrics
+        response_time: responseTime,
         custom_metrics: {
           page_url: page.url(),
           page_title: await page.title(),
           vu_id: context.vu_id,
+          command: action.command,
           action_time: result?.action_time,
           web_vitals: webVitals,
           vitals_score: vitalsScore,
@@ -345,6 +377,31 @@ export class WebHandler implements ProtocolHandler {
     return { selected: action.selector, value: action.value };
   }
 
+  private async handlePress(page: Page, action: WebAction): Promise<any> {
+    const timeout = action.timeout || 30000;
+    const key = action.key as string;
+
+    if (action.selector) {
+      // Press key on specific element
+      await page.waitForSelector(action.selector, {
+        state: 'visible',
+        timeout
+      });
+
+      // Highlight element before pressing (if enabled)
+      await this.highlightElement(page, action.selector);
+
+      await page.locator(action.selector).press(key, { timeout });
+
+      return { pressed: key, selector: action.selector };
+    } else {
+      // Press key globally (on the page)
+      await page.keyboard.press(key);
+
+      return { pressed: key };
+    }
+  }
+
   private async handleWaitForSelector(page: Page, action: WebAction): Promise<any> {
     await page.waitForSelector(action.selector!, {
       timeout: action.timeout || 30000
@@ -398,6 +455,30 @@ export class WebHandler implements ProtocolHandler {
 
     return {
       verified: 'text',
+      selector: action.selector,
+      name: action.name,
+      expected_text: expectedText,
+      actual_text: actualText,
+      text_match: true
+    };
+  }
+
+  private async handleVerifyContains(page: Page, action: WebAction): Promise<any> {
+    await page.waitForSelector(action.selector!, {
+      state: 'attached',
+      timeout: action.timeout || 30000
+    });
+
+    const textLocator = page.locator(action.selector!);
+    const actualText = await textLocator.textContent();
+    const expectedText = action.value as string;
+
+    if (!actualText || !actualText.includes(expectedText)) {
+      throw new Error(`Verification failed: Element "${action.selector}" text "${actualText}" does not contain "${expectedText}"${action.name ? ` (${action.name})` : ''}`);
+    }
+
+    return {
+      verified: 'contains',
       selector: action.selector,
       name: action.name,
       expected_text: expectedText,

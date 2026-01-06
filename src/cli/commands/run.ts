@@ -12,6 +12,7 @@ export interface RunOptions {
   report?: boolean;
   dryRun?: boolean;
   verbose?: boolean;
+  debug?: boolean;
   maxUsers?: string;
   global?: string[];  // Array of "key=value" or "key.nested=value" strings
 }
@@ -72,8 +73,11 @@ export async function runCommand(
   options: RunOptions
 ): Promise<void> {
   try {
-    if (options.verbose) {
+    // Set log level: default=WARN, --verbose=INFO, --debug=DEBUG
+    if (options.debug) {
       logger.setLevel(LogLevel.DEBUG);
+    } else if (options.verbose) {
+      logger.setLevel(LogLevel.INFO);
     }
 
     logger.info(`Loading configuration: ${configPath}`);
@@ -180,7 +184,7 @@ export async function runCommand(
 
   } catch (error: any) {
     logger.error(`Test execution failed: ${error.message}`);
-    if (options.verbose) {
+    if (options.verbose || options.debug) {
       console.error(error.stack);
     }
     process.exit(1);

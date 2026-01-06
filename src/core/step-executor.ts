@@ -303,24 +303,22 @@ export class StepExecutor {
   private shouldRecordStep(step: Step, success: boolean): boolean {
     // Always record errors
     if (!success) return true;
-    
-    // For web steps, only record verification commands
+
+    // For web steps, only record meaningful performance measurements:
+    // - Verifications (verify_*) - time for elements/text to appear (measures app responsiveness)
+    // - Waits (wait_for_*) - time for conditions to be met
+    // - Performance measurements (measure_*, performance_audit)
+    // NOT recorded: goto, click, fill, press, select, hover, screenshot (navigation/interactions)
     if (step.type === 'web' && step.action) {
-      const verificationCommands = [
-        'verify_visible',
-        'verify_text',
-        'verify_value',
-        'verify_attribute',
-        'verify_exists',
-        'verify_not_exists',
-        'assert_text',
-        'assert_visible',
-        'wait_for_element'
+      const measurableCommands = [
+        'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
+        'wait_for_selector', 'wait_for_text',
+        'measure_web_vitals', 'performance_audit'
       ];
-      
-      return verificationCommands.includes(step.action.command);
+
+      return measurableCommands.includes(step.action.command);
     }
-    
+
     return true;
   }
 

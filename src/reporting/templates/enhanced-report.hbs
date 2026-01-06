@@ -573,6 +573,244 @@
                 gap: 10px;
             }
         }
+
+        /* Apdex Score Styles */
+        .quality-card {
+            background: var(--card-background);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .quality-card h3 {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .apdex-score {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .apdex-excellent { color: #10b981; }
+        .apdex-good { color: #22c55e; }
+        .apdex-fair { color: #f59e0b; }
+        .apdex-poor { color: #f97316; }
+        .apdex-unacceptable { color: #ef4444; }
+
+        .apdex-rating {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .apdex-breakdown {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .apdex-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .apdex-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .apdex-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .apdex-value.satisfied { color: #10b981; }
+        .apdex-value.tolerating { color: #f59e0b; }
+        .apdex-value.frustrated { color: #ef4444; }
+
+        /* SLA Compliance Styles */
+        .sla-status {
+            font-size: 2rem;
+            font-weight: 700;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .sla-passed {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .sla-failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .sla-summary {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .sla-checks {
+            text-align: left;
+        }
+
+        .sla-check {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+        }
+
+        .check-passed {
+            background: #f0fdf4;
+        }
+
+        .check-failed {
+            background: #fef2f2;
+        }
+
+        .check-icon {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .check-passed .check-icon { color: #10b981; }
+        .check-failed .check-icon { color: #ef4444; }
+
+        .check-name {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .check-values {
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        /* Confidence Interval Styles */
+        .confidence-section {
+            margin-top: 24px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+
+        .confidence-section h4 {
+            margin-bottom: 12px;
+            color: var(--text-primary);
+        }
+
+        .confidence-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: linear-gradient(to right, #e0f2fe, #bae6fd, #e0f2fe);
+            border-radius: 6px;
+            font-family: monospace;
+        }
+
+        .ci-lower, .ci-upper {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .ci-mean {
+            font-weight: 600;
+            color: var(--primary-color);
+            font-size: 1.1rem;
+        }
+
+        /* Outlier Analysis Styles */
+        .outlier-section {
+            margin-top: 16px;
+            padding: 16px;
+            background: #fffbeb;
+            border-radius: 8px;
+            border-left: 4px solid #f59e0b;
+        }
+
+        .outlier-section h4 {
+            margin-bottom: 8px;
+            color: #92400e;
+        }
+
+        .outlier-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 0.9rem;
+        }
+
+        .outlier-count {
+            font-weight: 600;
+            color: #f59e0b;
+        }
+
+        .outlier-percentage {
+            color: var(--text-secondary);
+        }
+
+        .outlier-bounds {
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        /* Performance Trend Styles */
+        .trend-section {
+            margin-top: 16px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+
+        .trend-section h4 {
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .trend-indicator {
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+
+        .trend-indicator.improving {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .trend-indicator.degrading {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .trend-indicator.stable {
+            background: #f0f9ff;
+            color: #0369a1;
+        }
+
+        .trend-indicator.insufficient_data {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
     </style>
 </head>
 
@@ -618,6 +856,100 @@
                 <div class="metric-label">Total Duration</div>
             </div>
         </div>
+
+        <!-- Apdex Score & SLA Compliance -->
+        {{#if apdexScore}}
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Performance Quality</h2>
+            </div>
+            <div class="section-content">
+                <div class="grid-2">
+                    <!-- Apdex Score Card -->
+                    <div class="quality-card">
+                        <h3>Apdex Score</h3>
+                        <div class="apdex-score {{#if (gte apdexScore.score 0.94)}}apdex-excellent{{else}}{{#if (gte apdexScore.score 0.85)}}apdex-good{{else}}{{#if (gte apdexScore.score 0.70)}}apdex-fair{{else}}{{#if (gte apdexScore.score 0.50)}}apdex-poor{{else}}apdex-unacceptable{{/if}}{{/if}}{{/if}}{{/if}}">
+                            {{toFixed apdexScore.score 3}}
+                        </div>
+                        <div class="apdex-rating">{{apdexScore.rating}}</div>
+                        <div class="apdex-breakdown">
+                            <div class="apdex-item">
+                                <span class="apdex-label">Satisfied:</span>
+                                <span class="apdex-value satisfied">{{apdexScore.satisfied}}</span>
+                            </div>
+                            <div class="apdex-item">
+                                <span class="apdex-label">Tolerating:</span>
+                                <span class="apdex-value tolerating">{{apdexScore.tolerating}}</span>
+                            </div>
+                            <div class="apdex-item">
+                                <span class="apdex-label">Frustrated:</span>
+                                <span class="apdex-value frustrated">{{apdexScore.frustrated}}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SLA Compliance Card -->
+                    {{#if slaCompliance}}
+                    <div class="quality-card">
+                        <h3>SLA Compliance</h3>
+                        <div class="sla-status {{#if slaCompliance.passed}}sla-passed{{else}}sla-failed{{/if}}">
+                            {{#if slaCompliance.passed}}PASSED{{else}}FAILED{{/if}}
+                        </div>
+                        <div class="sla-summary">{{slaCompliance.summary}}</div>
+                        <div class="sla-checks">
+                            {{#each slaCompliance.checks}}
+                            <div class="sla-check {{#if passed}}check-passed{{else}}check-failed{{/if}}">
+                                <span class="check-icon">{{#if passed}}✓{{else}}✗{{/if}}</span>
+                                <span class="check-name">{{name}}</span>
+                                <span class="check-values">{{actual}}{{unit}} / {{target}}{{unit}}</span>
+                            </div>
+                            {{/each}}
+                        </div>
+                    </div>
+                    {{/if}}
+                </div>
+
+                <!-- Confidence Interval -->
+                {{#if confidenceInterval}}
+                <div class="confidence-section">
+                    <h4>Response Time Confidence Interval (95%)</h4>
+                    <div class="confidence-bar">
+                        <span class="ci-lower">{{confidenceInterval.lower}}ms</span>
+                        <span class="ci-mean">{{confidenceInterval.mean}}ms ± {{confidenceInterval.marginOfError}}ms</span>
+                        <span class="ci-upper">{{confidenceInterval.upper}}ms</span>
+                    </div>
+                </div>
+                {{/if}}
+
+                <!-- Outlier Analysis -->
+                {{#if outlierAnalysis}}
+                {{#if outlierAnalysis.outlierCount}}
+                <div class="outlier-section">
+                    <h4>Outlier Analysis</h4>
+                    <div class="outlier-summary">
+                        <span class="outlier-count">{{outlierAnalysis.outlierCount}} outliers detected</span>
+                        <span class="outlier-percentage">({{outlierAnalysis.outlierPercentage}}%)</span>
+                        <span class="outlier-bounds">Normal range: {{outlierAnalysis.lowerBound}}ms - {{outlierAnalysis.upperBound}}ms</span>
+                    </div>
+                </div>
+                {{/if}}
+                {{/if}}
+
+                <!-- Performance Trend -->
+                {{#if performanceTrends}}
+                <div class="trend-section">
+                    <h4>Performance Trend</h4>
+                    <div class="trend-indicator {{performanceTrends.trend}}">
+                        {{#ifEquals performanceTrends.trend "improving"}}↓ Improving{{/ifEquals}}
+                        {{#ifEquals performanceTrends.trend "degrading"}}↑ Degrading{{/ifEquals}}
+                        {{#ifEquals performanceTrends.trend "stable"}}→ Stable{{/ifEquals}}
+                        {{#ifEquals performanceTrends.trend "insufficient_data"}}— Insufficient Data{{/ifEquals}}
+                    </div>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+        {{/if}}
 
         <!-- NEW: Response Time Distribution -->
         <div class="section">
@@ -1809,24 +2141,47 @@
             });
         });
 
-        // Create buckets for histogram
-        const buckets = 10;
-        const min = Math.min(...responseTimes);
-        const max = Math.max(...responseTimes);
-        const bucketSize = (max - min) / buckets;
+        // Create buckets for histogram with sensible sizing
         const distribution = [];
+        if (responseTimes.length > 0) {
+            const min = Math.min(...responseTimes);
+            const max = Math.max(...responseTimes);
+            const range = max - min;
 
-        for (let i = 0; i < buckets; i++) {
-            const bucketStart = min + (i * bucketSize);
-            const bucketEnd = min + ((i + 1) * bucketSize);
-            const count = responseTimes.filter(time =>
-                time >= bucketStart && (i === buckets - 1 ? time <= bucketEnd : time < bucketEnd)
-            ).length;
+            if (range < 1) {
+                distribution.push({ bucket: `${Math.round(min)}ms`, count: responseTimes.length });
+            } else {
+                // Calculate ideal bucket size based on range
+                const targetBuckets = 10;
+                let bucketSize = range / targetBuckets;
 
-            distribution.push({
-                bucket: `${bucketStart.toFixed(0)}-${bucketEnd.toFixed(0)}ms`,
-                count
-            });
+                // Round to nice numbers
+                if (bucketSize < 1) bucketSize = 1;
+                else if (bucketSize < 2) bucketSize = 2;
+                else if (bucketSize < 5) bucketSize = 5;
+                else if (bucketSize < 10) bucketSize = 10;
+                else if (bucketSize < 25) bucketSize = 25;
+                else if (bucketSize < 50) bucketSize = 50;
+                else if (bucketSize < 100) bucketSize = 100;
+                else if (bucketSize < 250) bucketSize = 250;
+                else if (bucketSize < 500) bucketSize = 500;
+                else if (bucketSize < 1000) bucketSize = 1000;
+                else bucketSize = Math.ceil(bucketSize / 1000) * 1000;
+
+                const bucketStart = Math.floor(min / bucketSize) * bucketSize;
+                const bucketEnd = Math.ceil(max / bucketSize) * bucketSize;
+                const numBuckets = Math.max(1, Math.round((bucketEnd - bucketStart) / bucketSize));
+
+                for (let i = 0; i < numBuckets; i++) {
+                    const start = bucketStart + (i * bucketSize);
+                    const end = start + bucketSize;
+                    const count = responseTimes.filter(time =>
+                        time >= start && (i === numBuckets - 1 ? time <= end : time < end)
+                    ).length;
+
+                    distribution.push({ bucket: `${Math.round(start)}-${Math.round(end)}ms`, count });
+                }
+            }
         }
 
         new Chart(responseDistributionCtx, {
@@ -2236,21 +2591,21 @@
                     datasets: [{
                         label: 'Successful Verifications',
                         data: verificationData.filter(d => d.success).map(d => ({
-                            x: d.timestamp,
+                            x: new Date(d.timestamp),
                             y: d.duration
                         })),
                         backgroundColor: '#10b981',
                         borderColor: '#10b981',
-                        pointRadius: 4
+                        pointRadius: 6
                     }, {
                         label: 'Failed Verifications',
                         data: verificationData.filter(d => !d.success).map(d => ({
-                            x: d.timestamp,
+                            x: new Date(d.timestamp),
                             y: d.duration
                         })),
                         backgroundColor: '#ef4444',
                         borderColor: '#ef4444',
-                        pointRadius: 4
+                        pointRadius: 6
                     }]
                 },
                 options: {
@@ -2268,7 +2623,12 @@
                                     return new Date(context[0].parsed.x).toLocaleTimeString();
                                 },
                                 label: function(context) {
-                                    const point = verificationData[context.dataIndex];
+                                    const datasetIndex = context.datasetIndex;
+                                    const dataIndex = context.dataIndex;
+                                    const filtered = datasetIndex === 0
+                                        ? verificationData.filter(d => d.success)
+                                        : verificationData.filter(d => !d.success);
+                                    const point = filtered[dataIndex];
                                     return [
                                         `Duration: ${Math.round(context.parsed.y)}ms`,
                                         `Step: ${point?.stepName || 'Unknown'}`,
@@ -2280,8 +2640,15 @@
                     },
                     scales: {
                         x: {
-                            type: 'linear',
+                            type: 'time',
                             position: 'bottom',
+                            time: {
+                                displayFormats: {
+                                    second: 'HH:mm:ss',
+                                    minute: 'HH:mm',
+                                    hour: 'HH:mm'
+                                }
+                            },
                             title: {
                                 display: true,
                                 text: 'Time'
@@ -2300,8 +2667,10 @@
         }
         {{/if}}
 
-        // Connect Time Over Time Chart
-        if (connectTimeData && connectTimeData.length > 0) {
+        // Connect Time Over Time Chart - only show if there's meaningful data
+        const hasConnectTimeData = connectTimeData && connectTimeData.length > 0 &&
+            connectTimeData.some(d => d.avg_connect_time > 0);
+        if (hasConnectTimeData) {
             const connectTimeCtx = document.getElementById('connectTimeChart').getContext('2d');
             new Chart(connectTimeCtx, {
                 type: 'line',
@@ -2362,10 +2731,16 @@
                     }
                 }
             });
+        } else {
+            // Hide connect time chart container if no data
+            const connectTimeContainer = document.getElementById('connectTimeChart')?.closest('.chart-container, .bg-white, [class*="rounded"]');
+            if (connectTimeContainer) connectTimeContainer.style.display = 'none';
         }
 
-        // Latency Over Time Chart
-        if (latencyData && latencyData.length > 0) {
+        // Latency Over Time Chart - only show if there's meaningful data
+        const hasLatencyData = latencyData && latencyData.length > 0 &&
+            latencyData.some(d => d.avg_latency > 0);
+        if (hasLatencyData) {
             const latencyCtx = document.getElementById('latencyChart').getContext('2d');
             new Chart(latencyCtx, {
                 type: 'line',
@@ -2426,6 +2801,10 @@
                     }
                 }
             });
+        } else {
+            // Hide latency chart container if no data
+            const latencyContainer = document.getElementById('latencyChart')?.closest('.chart-container, .bg-white, [class*="rounded"]');
+            if (latencyContainer) latencyContainer.style.display = 'none';
         }
     </script>
 </body>

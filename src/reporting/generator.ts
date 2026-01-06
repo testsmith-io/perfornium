@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TestResult, MetricsSummary } from '../metrics/types';
 import { ReportConfig } from '../config/types';
-import { StatisticsCalculator } from './statistics';
+import { StatisticsCalculator, isMeasurableResult } from './statistics';
 import { logger } from '../utils/logger';
 
 // Import handlebars correctly
@@ -151,12 +151,16 @@ export class HTMLReportGenerator {
 
   /**
    * Enhanced step statistics with min, max, and additional percentiles
+   * Only includes measurable results (verifications, not actions like click/fill)
    */
   private calculateStepStatistics(results: TestResult[]): any[] {
+    // Filter to only include measurable results (verifications, waits, measurements)
+    const measurableResults = results.filter(isMeasurableResult);
+
     const stepGroups: Record<string, TestResult[]> = {};
 
     // Group results by step name and scenario
-    results.forEach(result => {
+    measurableResults.forEach(result => {
       const key = `${result.scenario}-${result.step_name || 'default'}`;
       if (!stepGroups[key]) {
         stepGroups[key] = [];
@@ -279,38 +283,27 @@ export class HTMLReportGenerator {
   }
 
   private calculateVURampupData(results: TestResult[], vuStartEvents: any[] = []): any[] {
-    // Calculate total unique VUs
-    const totalVUs = vuStartEvents.length > 0
-      ? vuStartEvents.length
-      : new Set(results.map(r => r.vu_id)).size;
-
+    // ONLY use real VU tracking data - no estimation
     const vuRampupData: Array<{time: number, timestamp: number, count: number}> = [];
 
-    // Determine test time range
-    const testStartTime = vuStartEvents.length > 0
-      ? Math.min(...vuStartEvents.map(vu => vu.start_time))
-      : (results.length > 0 ? Math.min(...results.map(r => r.timestamp)) : Date.now());
+    // Only generate data if we have real VU start events
+    if (vuStartEvents.length === 0) {
+      return vuRampupData; // Return empty - no VU tracking available
+    }
+
+    const totalVUs = vuStartEvents.length;
+    const testStartTime = Math.min(...vuStartEvents.map(vu => vu.start_time));
     const testEndTime = results.length > 0
       ? Math.max(...results.map(r => r.timestamp))
       : testStartTime + 60000;
 
     // Create time buckets for the entire test duration (1 second intervals)
     const timeInterval = 1000;
-    const sortedVUEvents = vuStartEvents.length > 0
-      ? [...vuStartEvents].sort((a, b) => a.start_time - b.start_time)
-      : [];
+    const sortedVUEvents = [...vuStartEvents].sort((a, b) => a.start_time - b.start_time);
 
     for (let t = testStartTime; t <= testEndTime; t += timeInterval) {
-      let activeVUs: number;
-
-      if (sortedVUEvents.length > 0) {
-        // Count VUs that have started by this time
-        activeVUs = sortedVUEvents.filter(vu => vu.start_time <= t).length;
-      } else {
-        // Fallback: count unique VU IDs from results up to this time
-        const resultsUpToNow = results.filter(r => r.timestamp <= t);
-        activeVUs = new Set(resultsUpToNow.map(r => r.vu_id)).size;
-      }
+      // Count VUs that have started by this time (real data)
+      const activeVUs = sortedVUEvents.filter(vu => vu.start_time <= t).length;
 
       vuRampupData.push({
         time: (t - testStartTime) / 1000,
@@ -325,9 +318,6 @@ export class HTMLReportGenerator {
   private calculateTimelineData(results: TestResult[]): any[] {
     const timeGroups = StatisticsCalculator.groupResultsByTime(results, 5000); // 5 second intervals
 
-    // Calculate total unique VUs to cap the count and prevent spikes
-    const totalVUs = new Set(results.map(r => r.vu_id)).size;
-
     return timeGroups.map(group => {
       const groupResults = results.filter(r =>
         Math.abs(new Date(r.timestamp).getTime() - new Date(group.timestamp).getTime()) < 5000
@@ -337,9 +327,8 @@ export class HTMLReportGenerator {
       const avgResponseTime = successfulResults.length > 0 ?
         successfulResults.reduce((sum, r) => sum + r.duration, 0) / successfulResults.length : 0;
 
-      let activeVUs = group.concurrent_users || this.estimateActiveVUs(group.timestamp, results);
-      // Cap at total VUs to prevent end-of-test spikes
-      activeVUs = Math.min(activeVUs, totalVUs);
+      // Use only real concurrent_users from tracked data, default to 0 if not available
+      const activeVUs = group.concurrent_users || 0;
 
       return {
         timestamp: group.timestamp,
@@ -351,24 +340,7 @@ export class HTMLReportGenerator {
     });
   }
 
-  private estimateActiveVUs(timestamp: string | number, results: TestResult[]): number {
-    const currentTime = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp;
-    const timeWindow = 5000; // 5 seconds
-
-    // Find all results within the time window
-    const activeResults = results.filter(r => {
-      const resultTime = new Date(r.timestamp).getTime();
-      return Math.abs(resultTime - currentTime) <= timeWindow;
-    });
-
-    if (activeResults.length === 0) {
-      return 0;
-    }
-
-    // Count unique virtual users active in this time window
-    const uniqueVUs = new Set(activeResults.map(r => r.vu_id));
-    return uniqueVUs.size;
-  }
+  // Removed estimateActiveVUs - only use real tracked VU data
 
   private prepareChartData(results: TestResult[]): any {
     const responseTimes = results

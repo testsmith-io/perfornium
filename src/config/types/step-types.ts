@@ -93,13 +93,14 @@ export interface ScriptStep extends BaseStep {
 export interface WebAction {
   name?: string;
   expected_text?: string;
-  command: 'goto' | 'click' | 'fill' | 'select' | 'hover' | 'screenshot' | 'wait_for_selector' | 'wait_for_text' | 
-           'verify_text' | 'verify_not_exists' | 'verify_exists' | 'verify_visible' | 'evaluate' |
+  command: 'goto' | 'click' | 'fill' | 'press' | 'select' | 'hover' | 'screenshot' | 'wait_for_selector' | 'wait_for_text' |
+           'verify_text' | 'verify_contains' | 'verify_not_exists' | 'verify_exists' | 'verify_visible' | 'evaluate' |
            'measure_web_vitals' | 'measure_verification' | 'performance_audit' | 'accessibility_audit' |
            'wait_for_load_state' | 'network_idle' | 'dom_ready';
   selector?: string;
   url?: string;
   value?: string | string[];
+  key?: string;  // Key to press (e.g., 'Tab', 'Enter', 'Escape')
   text?: string;
   script?: string;
   timeout?: number;

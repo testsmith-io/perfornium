@@ -75,9 +75,20 @@ perfornium run <config> [options]
 | `-o, --output <directory>`    | Output directory for results.                                   |
 | `-r, --report`                | Generate HTML report after test.                                |
 | `--dry-run`                   | Validate configuration without running test.                    |
-| `-v, --verbose`               | Enable verbose logging.                                         |
+| `-v, --verbose`               | Enable verbose logging (info level).                            |
+| `-d, --debug`                 | Enable debug logging (very detailed).                           |
 | `--max-users <number>`        | Maximum virtual users override.                                 |
 | `-g, --global <key=value>`    | Override any global config value (supports dot notation).       |
+
+**Logging Levels**
+
+By default, Perfornium runs quietly showing only warnings and errors. Use flags to increase verbosity:
+
+| Flag | Level | Output |
+| ---- | ----- | ------ |
+| (none) | WARN | Only warnings and errors |
+| `-v, --verbose` | INFO | Progress messages (loading config, test start/end, etc.) |
+| `-d, --debug` | DEBUG | Detailed step-by-step execution, variable values, etc. |
 
 **Global Variable Overrides (`-g, --global`)**
 
@@ -430,7 +441,8 @@ perfornium distributed <config> [options]
 | `--sync-start`              |                — | Synchronize test start across all workers.                                               |
 | `-o, --output <directory>`  |                — | Output directory for results.                                                            |
 | `-r, --report`              |                — | Generate HTML report after test.                                                         |
-| `-v, --verbose`             |                — | Enable verbose logging.                                                                  |
+| `-v, --verbose`             |                — | Enable verbose logging (info level).                                                     |
+| `-d, --debug`               |                — | Enable debug logging (very detailed).                                                    |
 
 **Examples**
 

@@ -3,7 +3,8 @@ import chalk from 'chalk';
 export enum LogLevel { DEBUG = 0, INFO = 1, WARN = 2, ERROR = 3 }
 
 export class Logger {
-  private level: LogLevel = LogLevel.INFO;
+  // Default to WARN - minimal output unless verbose mode is enabled
+  private level: LogLevel = LogLevel.WARN;
   
   setLevel(level: LogLevel): void { this.level = level; }
   

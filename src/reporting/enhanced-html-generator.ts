@@ -4,7 +4,8 @@ import * as Handlebars from 'handlebars';
 import { TestResult, MetricsSummary } from '../metrics/types';
 import { logger } from '../utils/logger';
 import { FileManager } from '../utils/file-manager';
-import { StatisticsCalculator } from './statistics';
+import { StatisticsCalculator, ApdexScore, SLACompliance, OutlierAnalysis, ConfidenceInterval, HeatmapData } from './statistics';
+import { getResponseTime, TIME_BUCKETS, SLA_DEFAULTS } from './constants';
 
 export interface HTMLReportConfig {
   title?: string;
@@ -16,6 +17,16 @@ export interface HTMLReportConfig {
   templatePath?: string;
   assetsInline?: boolean; // Embed CSS/JS directly in HTML
   darkMode?: boolean;
+  // SLA configuration
+  sla?: {
+    successRate?: number;        // Minimum success rate (%)
+    avgResponseTime?: number;    // Maximum avg response time (ms)
+    p95ResponseTime?: number;    // Maximum P95 response time (ms)
+    p99ResponseTime?: number;    // Maximum P99 response time (ms)
+    minThroughput?: number;      // Minimum throughput (req/s)
+  };
+  // Apdex threshold (ms) - requests under this are "satisfied"
+  apdexThreshold?: number;
 }
 
 export interface HTMLReportData {
@@ -138,6 +149,21 @@ export class EnhancedHTMLReportGenerator {
       return (String(arg1) === String(arg2)) ? options.fn(this) : options.inverse(this);
     });
 
+    // Greater than or equal comparison helper
+    Handlebars.registerHelper('gte', function(a: number, b: number) {
+      return a >= b;
+    });
+
+    // Greater than comparison helper
+    Handlebars.registerHelper('gt', function(a: number, b: number) {
+      return a > b;
+    });
+
+    // Less than comparison helper
+    Handlebars.registerHelper('lt', function(a: number, b: number) {
+      return a < b;
+    });
+
     // Additional helpers needed by the template
     Handlebars.registerHelper('toFixed', function (num: number, digits: number) {
       return typeof num === 'number' ? num.toFixed(digits) : '0';
@@ -178,39 +204,84 @@ export class EnhancedHTMLReportGenerator {
       return processedPath;
 
     } catch (error) {
-      logger.error('❌ Failed to generate HTML report:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : '';
+      logger.error(`❌ Failed to generate HTML report for "${data.testName}":`, {
+        error: errorMessage,
+        stack: errorStack,
+        outputPath: filePath,
+        resultsCount: data.results?.length || 0,
+      });
+      throw new Error(`Report generation failed: ${errorMessage}`);
     }
   }
 
   private prepareReportData(data: HTMLReportData): any {
     const now = Date.now();
     const startTime = data.metadata?.test_start ? new Date(data.metadata.test_start).getTime() : now - 60000;
-    
+
     // Calculate enhanced statistics if results are available
     const enhancedSummary = { ...data.summary };
+
+    // Comprehensive analysis objects
+    let apdexScore: ApdexScore | null = null;
+    let slaCompliance: SLACompliance | null = null;
+    let outlierAnalysis: OutlierAnalysis | null = null;
+    let confidenceInterval: ConfidenceInterval | null = null;
+    let heatmapData: HeatmapData | null = null;
+    let performanceTrends: any = null;
+
     if (data.results && data.results.length > 0) {
-      // Add Web Vitals statistics
-      const webVitalsStats = StatisticsCalculator.calculateWebVitalsStatistics(data.results);
-      Object.assign(enhancedSummary, webVitalsStats);
+      try {
+        // Add Web Vitals statistics
+        const webVitalsStats = StatisticsCalculator.calculateWebVitalsStatistics(data.results);
+        Object.assign(enhancedSummary, webVitalsStats);
 
-      // Add verification statistics
-      const verificationStats = StatisticsCalculator.calculateVerificationStatistics(data.results);
-      if (verificationStats) {
-        enhancedSummary.verification_metrics = verificationStats;
-      }
+        // Calculate step statistics using centralized method (deduplicated)
+        if (!enhancedSummary.step_statistics || enhancedSummary.step_statistics.length === 0) {
+          enhancedSummary.step_statistics = StatisticsCalculator.calculateDetailedStepStatistics(data.results);
+        }
 
-      // Calculate step statistics if not already provided (e.g., for distributed tests)
-      if (!enhancedSummary.step_statistics || enhancedSummary.step_statistics.length === 0) {
-        enhancedSummary.step_statistics = this.calculateStepStatistics(data.results);
+        // Calculate Apdex score
+        apdexScore = StatisticsCalculator.calculateApdexScore(
+          data.results,
+          this.config.apdexThreshold
+        );
+
+        // Check SLA compliance
+        const slaConfig = this.config.sla ? {
+          SUCCESS_RATE: this.config.sla.successRate ?? SLA_DEFAULTS.SUCCESS_RATE,
+          AVG_RESPONSE_TIME: this.config.sla.avgResponseTime ?? SLA_DEFAULTS.AVG_RESPONSE_TIME,
+          P95_RESPONSE_TIME: this.config.sla.p95ResponseTime ?? SLA_DEFAULTS.P95_RESPONSE_TIME,
+          P99_RESPONSE_TIME: this.config.sla.p99ResponseTime ?? SLA_DEFAULTS.P99_RESPONSE_TIME,
+          MIN_REQUESTS_PER_SECOND: this.config.sla.minThroughput ?? SLA_DEFAULTS.MIN_REQUESTS_PER_SECOND,
+        } : undefined;
+        slaCompliance = StatisticsCalculator.checkSLACompliance(data.results, slaConfig);
+
+        // Detect outliers
+        outlierAnalysis = StatisticsCalculator.detectOutliers(data.results);
+
+        // Calculate confidence interval for response times
+        const responseTimes = data.results.filter(r => r.success).map(r => getResponseTime(r));
+        if (responseTimes.length > 0) {
+          confidenceInterval = StatisticsCalculator.calculateConfidenceInterval(responseTimes);
+        }
+
+        // Generate heatmap data
+        heatmapData = StatisticsCalculator.generateHeatmapData(data.results);
+
+        // Calculate performance trends
+        performanceTrends = StatisticsCalculator.calculatePerformanceTrends(data.results);
+
+      } catch (error) {
+        logger.warn('Warning: Error calculating enhanced statistics:', error);
       }
     }
-    
+
     // Check if this is a Playwright-based test
     const hasWebVitals = data.results?.some(r => r.custom_metrics?.web_vitals) || enhancedSummary.web_vitals_data;
     const isPlaywrightTest = data.results?.some(r => r.scenario?.includes('web') || r.action?.includes('goto') || r.action?.includes('verify')) || hasWebVitals;
-    
-    
+
     // Prepare data in the format expected by the template
     const charts = this.config.includeCharts ? this.prepareChartData(data) : null;
     const timeline = this.config.includeTimeline ? this.prepareTimelineData(data) : null;
@@ -242,6 +313,22 @@ export class EnhancedHTMLReportGenerator {
       responseTimeAnalysis,
       webVitalsCharts: isPlaywrightTest ? this.prepareWebVitalsCharts(data) : null,
       isPlaywrightTest,
+
+      // NEW: Comprehensive analysis data
+      apdexScore,
+      slaCompliance,
+      outlierAnalysis,
+      confidenceInterval,
+      heatmapData,
+      performanceTrends,
+
+      // JSON-serialized versions for charts
+      apdexScoreData: JSON.stringify(apdexScore),
+      slaComplianceData: JSON.stringify(slaCompliance),
+      outlierAnalysisData: JSON.stringify(outlierAnalysis),
+      confidenceIntervalData: JSON.stringify(confidenceInterval),
+      heatmapDataJson: JSON.stringify(heatmapData),
+      performanceTrendsData: JSON.stringify(performanceTrends),
 
       // Template-specific data variables (for compatibility with enhanced-report.hbs)
       generatedAt, // Human-readable date for template header
@@ -296,20 +383,21 @@ export class EnhancedHTMLReportGenerator {
     const results = data.results.sort((a, b) => a.timestamp - b.timestamp);
     const startTime = results[0].timestamp;
 
-    // Get VU ramp-up events from summary
+    // Get VU ramp-up events from summary (real VU tracking data)
     const vuRampUpEvents = data.summary.vu_ramp_up || [];
 
-    // Group results by time buckets (every 5 seconds)
-    const bucketSize = 5000; // 5 seconds
+    // Use TIME_BUCKETS.FINE (1 second) for granular timeline
+    const bucketSize = TIME_BUCKETS.FINE;
     const buckets: Map<number, TestResult[]> = new Map();
 
-    results.forEach(result => {
+    // O(n) bucketing - single pass
+    for (const result of results) {
       const bucketKey = Math.floor((result.timestamp - startTime) / bucketSize) * bucketSize;
       if (!buckets.has(bucketKey)) {
         buckets.set(bucketKey, []);
       }
       buckets.get(bucketKey)!.push(result);
-    });
+    }
 
     // Create timeline data with active VUs
     const timelineData = Array.from(buckets.entries()).map(([time, bucketResults]) => {
@@ -317,9 +405,9 @@ export class EnhancedHTMLReportGenerator {
       const successful = successfulResults.length;
       const failed = bucketResults.filter(r => !r.success).length;
 
-      // Calculate average response time for SUCCESSFUL requests only
+      // Calculate average response time using standardized getResponseTime
       const avgResponseTime = successfulResults.length > 0
-        ? successfulResults.reduce((sum, r) => sum + (r.response_time || r.duration || 0), 0) / successfulResults.length
+        ? successfulResults.reduce((sum, r) => sum + getResponseTime(r), 0) / successfulResults.length
         : 0;
 
       // Calculate average connect time and latency (from successful requests only)
@@ -333,18 +421,15 @@ export class EnhancedHTMLReportGenerator {
         ? latencies.reduce((sum, l) => sum + l, 0) / latencies.length
         : 0;
 
-      // Calculate active VUs at this time point
+      // Calculate active VUs at this time point - ONLY use real tracked data
       const currentTime = startTime + time;
-      let activeVUs: number;
+      let activeVUs = 0;
 
       if (vuRampUpEvents.length > 0) {
         // Count VUs that started before or at this time point (real data from workers)
         activeVUs = vuRampUpEvents.filter(vu => vu.start_time <= currentTime).length;
-      } else {
-        // Fallback: count unique VU IDs from results up to this time
-        const resultsUpToNow = results.filter(r => r.timestamp <= currentTime);
-        activeVUs = new Set(resultsUpToNow.map(r => r.vu_id)).size;
       }
+      // No fallback - if no VU tracking data, activeVUs stays 0
 
       // Calculate success rate
       const successRate = bucketResults.length > 0
@@ -367,7 +452,7 @@ export class EnhancedHTMLReportGenerator {
         active_vus: activeVUs,
         success_rate: successRate
       };
-    });
+    }).sort((a, b) => a.timestamp - b.timestamp); // Sort by timestamp to ensure chronological order
 
     // Aggregate VU ramp-up by time buckets
     const vuRampupBuckets: Map<number, number> = new Map();
@@ -377,47 +462,36 @@ export class EnhancedHTMLReportGenerator {
     });
 
     // Create cumulative VU count for chart as a time series
-    // Shows VUs ramping up AND staying active throughout the test
-    // For distributed tests, use the total_virtual_users from summary (which accounts for all workers)
+    // ONLY use real tracked VU data - no estimation
     const summaryAny = data.summary as any;
     const totalVUs = summaryAny.total_virtual_users
       || summaryAny.peak_virtual_users
-      || (vuRampUpEvents.length > 0 ? vuRampUpEvents.length : new Set(results.map(r => r.vu_id)).size);
+      || vuRampUpEvents.length; // Only count if we have real VU events
 
     const vuRampupCumulative: Array<{time: number, timestamp: number, count: number}> = [];
 
-    // Determine test time range
-    const testStartTime = vuRampUpEvents.length > 0
-      ? Math.min(...vuRampUpEvents.map(vu => vu.start_time))
-      : startTime;
-    const testEndTime = results.length > 0
-      ? Math.max(...results.map(r => r.timestamp))
-      : testStartTime + 60000; // Default 60s if no results
+    // Only generate VU ramp-up data if we have real VU tracking events
+    if (vuRampUpEvents.length > 0) {
+      const testStartTime = Math.min(...vuRampUpEvents.map(vu => vu.start_time));
+      const testEndTime = results.length > 0
+        ? Math.max(...results.map(r => r.timestamp))
+        : testStartTime + 60000;
 
-    // Create time buckets for the entire test duration (1 second intervals)
-    const timeInterval = 1000; // 1 second
-    const sortedVUEvents = vuRampUpEvents.length > 0
-      ? [...vuRampUpEvents].sort((a, b) => a.start_time - b.start_time)
-      : [];
+      const timeInterval = 1000; // 1 second
+      const sortedVUEvents = [...vuRampUpEvents].sort((a, b) => a.start_time - b.start_time);
 
-    for (let t = testStartTime; t <= testEndTime; t += timeInterval) {
-      let activeVUs: number;
-
-      if (sortedVUEvents.length > 0) {
+      for (let t = testStartTime; t <= testEndTime; t += timeInterval) {
         // Count VUs that have started by this time (real data from workers)
-        activeVUs = sortedVUEvents.filter(vu => vu.start_time <= t).length;
-      } else {
-        // Fallback: count unique VU IDs from results up to this time
-        const resultsUpToNow = results.filter(r => r.timestamp <= t);
-        activeVUs = new Set(resultsUpToNow.map(r => r.vu_id)).size;
-      }
+        const activeVUs = sortedVUEvents.filter(vu => vu.start_time <= t).length;
 
-      vuRampupCumulative.push({
-        time: (t - testStartTime) / 1000,
-        timestamp: t,
-        count: Math.min(activeVUs, totalVUs)
-      });
+        vuRampupCumulative.push({
+          time: (t - testStartTime) / 1000,
+          timestamp: t,
+          count: Math.min(activeVUs, totalVUs)
+        });
+      }
     }
+    // If no VU events, vuRampupCumulative stays empty - chart will be hidden
 
     // Prepare requests per second data with all required fields
     const requestsPerSecondData = timelineData.map(d => ({
@@ -631,10 +705,31 @@ export class EnhancedHTMLReportGenerator {
 
     if (responseTimes.length === 0) return { data: [], labels: [], colors: [] };
 
-    const min = responseTimes[0];
-    const max = responseTimes[responseTimes.length - 1];
-    const numBuckets = 20;
-    const bucketSize = (max - min) / numBuckets;
+    const min = Math.floor(responseTimes[0]);
+    const max = Math.ceil(responseTimes[responseTimes.length - 1]);
+    const range = max - min;
+
+    // Use adaptive bucket sizing based on range
+    let bucketSize: number;
+    let numBuckets: number;
+
+    if (range <= 10) {
+      // Small range: 1ms buckets
+      bucketSize = 1;
+      numBuckets = Math.max(range, 1);
+    } else if (range <= 100) {
+      // Medium range: 5ms buckets
+      bucketSize = 5;
+      numBuckets = Math.ceil(range / bucketSize);
+    } else if (range <= 1000) {
+      // Large range: 50ms buckets
+      bucketSize = 50;
+      numBuckets = Math.ceil(range / bucketSize);
+    } else {
+      // Very large range: adaptive buckets (max 20)
+      numBuckets = 20;
+      bucketSize = Math.ceil(range / numBuckets);
+    }
 
     const histogram = new Array(numBuckets).fill(0);
     const labels: string[] = [];
@@ -643,7 +738,7 @@ export class EnhancedHTMLReportGenerator {
     for (let i = 0; i < numBuckets; i++) {
       const start = min + (i * bucketSize);
       const end = min + ((i + 1) * bucketSize);
-      labels.push(`${Math.round(start)}-${Math.round(end)}ms`);
+      labels.push(`${start}-${end}ms`);
     }
 
     responseTimes.forEach(rt => {
@@ -875,74 +970,7 @@ export class EnhancedHTMLReportGenerator {
     return path.join(__dirname, '../reporting/templates/enhanced-report.hbs');
   }
 
-  /**
-   * Calculate step statistics from results (for distributed tests or when not pre-calculated)
-   */
-  private calculateStepStatistics(results: TestResult[]): any[] {
-    const stepGroups: Record<string, TestResult[]> = {};
-
-    // Group results by step name and scenario
-    results.forEach(result => {
-      const key = `${result.scenario || 'default'}-${result.step_name || result.action || 'default'}`;
-      if (!stepGroups[key]) {
-        stepGroups[key] = [];
-      }
-      stepGroups[key].push(result);
-    });
-
-    return Object.entries(stepGroups).map(([key, stepResults]) => {
-      const parts = key.split('-');
-      const scenario = parts[0];
-      const stepName = parts.slice(1).join('-');
-      const successfulResults = stepResults.filter(r => r.success);
-      const responseTimes = successfulResults.map(r => r.duration || r.response_time || 0);
-
-      // Calculate percentiles using linear interpolation (like numpy/pandas)
-      const sortedTimes = [...responseTimes].sort((a, b) => a - b);
-      const getPercentile = (p: number) => {
-        if (sortedTimes.length === 0) return 0;
-        if (sortedTimes.length === 1) return sortedTimes[0];
-
-        // Linear interpolation method
-        const rank = (p / 100) * (sortedTimes.length - 1);
-        const lowerIndex = Math.floor(rank);
-        const upperIndex = Math.ceil(rank);
-        const fraction = rank - lowerIndex;
-
-        if (lowerIndex === upperIndex) {
-          return sortedTimes[lowerIndex];
-        }
-
-        // Interpolate between the two nearest values
-        return sortedTimes[lowerIndex] + fraction * (sortedTimes[upperIndex] - sortedTimes[lowerIndex]);
-      };
-
-      const minResponseTime = responseTimes.length > 0 ? Math.min(...responseTimes) : 0;
-      const maxResponseTime = responseTimes.length > 0 ? Math.max(...responseTimes) : 0;
-      const avgResponseTime = responseTimes.length > 0 ?
-        responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length : 0;
-
-      return {
-        step_name: stepName,
-        scenario: scenario,
-        total_requests: stepResults.length,
-        success_rate: stepResults.length > 0 ? (successfulResults.length / stepResults.length) * 100 : 0,
-        avg_response_time: Math.round(avgResponseTime * 10) / 10,
-        min_response_time: Math.round(minResponseTime * 10) / 10,
-        max_response_time: Math.round(maxResponseTime * 10) / 10,
-        median_response_time: Math.round(getPercentile(50) * 10) / 10,
-        percentiles: {
-          '50': Math.round(getPercentile(50) * 10) / 10,
-          '90': Math.round(getPercentile(90) * 10) / 10,
-          '95': Math.round(getPercentile(95) * 10) / 10,
-          '99': Math.round(getPercentile(99) * 10) / 10,
-          '99.9': Math.round(getPercentile(99.9) * 10) / 10,
-          '99.99': Math.round(getPercentile(99.99) * 10) / 10
-        },
-        response_times: responseTimes
-      };
-    });
-  }
+  // NOTE: calculateStepStatistics has been removed - using StatisticsCalculator.calculateDetailedStepStatistics instead
 
   private formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;

@@ -162,7 +162,7 @@ export class ConfigValidator {
       errors.push(`Web action at index ${index} in scenario '${scenarioName}' must have a command`);
     }
 
-    const validCommands = ['goto', 'click', 'fill', 'select', 'hover', 'screenshot', 'wait_for_selector', 'wait_for_text', 'evaluate', 'verify_text', 'verify_not_exists', 'verify_exists', 'verify_visible', 'measure_web_vitals', 'performance_audit', 'wait_for_load_state', 'network_idle', 'dom_ready'];
+    const validCommands = ['goto', 'click', 'fill', 'press', 'select', 'hover', 'screenshot', 'wait_for_selector', 'wait_for_text', 'evaluate', 'verify_text', 'verify_contains', 'verify_not_exists', 'verify_exists', 'verify_visible', 'measure_web_vitals', 'performance_audit', 'wait_for_load_state', 'network_idle', 'dom_ready'];
     if (step.action.command && !validCommands.includes(step.action.command)) {
       errors.push(`Invalid web command '${step.action.command}' at index ${index} in scenario '${scenarioName}'`);
     }

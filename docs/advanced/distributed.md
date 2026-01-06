@@ -11,6 +11,161 @@ Distributed testing provides:
 - Centralized coordination and results
 - Fault tolerance and redundancy
 
+---
+
+## CLI Quick Start
+
+### 1. Start Worker Nodes
+
+Start workers on each machine (or multiple ports on localhost for testing):
+
+```bash
+# Terminal 1
+perfornium worker --port 8081
+
+# Terminal 2
+perfornium worker --port 8082
+
+# Terminal 3
+perfornium worker --port 8083
+```
+
+### 2. Run Distributed Test
+
+```bash
+perfornium distributed your-test.yaml \
+  -w "localhost:8081,localhost:8082,localhost:8083" \
+  -s even \
+  --sync-start \
+  --report
+```
+
+### Workers File Format
+
+Create a `workers.json` file:
+
+```json
+[
+  { "host": "localhost", "port": 8081 },
+  { "host": "localhost", "port": 8082 },
+  { "host": "localhost", "port": 8083 }
+]
+```
+
+**Full format with all options:**
+```json
+[
+  { "host": "worker1.example.com", "port": 8080, "capacity": 100, "region": "us-east" },
+  { "host": "worker2.example.com", "port": 8080, "capacity": 150, "region": "us-west" },
+  { "host": "worker3.example.com", "port": 8080, "capacity": 50,  "region": "eu-west" }
+]
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `host` | Yes | - | Worker hostname or IP |
+| `port` | Yes | `8080` | Worker port |
+| `capacity` | No | `100` | Relative capacity for load distribution |
+| `region` | No | `'default'` | Geographic region (for `geographic` strategy) |
+
+Then run:
+```bash
+perfornium distributed test.yaml --workers-file workers.json -s even --sync-start --report
+```
+
+### Distribution Strategies (`-s`)
+
+| Strategy | Description |
+|----------|-------------|
+| `even` | Distributes VUs equally across all workers (recommended for equal workers) |
+| `capacity_based` | Distributes VUs proportionally based on worker `capacity` values (default) |
+| `round_robin` | Assigns VUs one at a time to each worker in rotation |
+| `geographic` | Groups workers by `region`, distributes evenly across regions |
+
+**Example:** 30 VUs across 3 workers with `-s even` = 10 VUs per worker
+
+### Synchronized Start (`--sync-start`)
+
+Controls how workers begin the test:
+
+| Mode | Behavior |
+|------|----------|
+| **With `--sync-start`** | All workers prepare first, then start simultaneously |
+| **Without** | Workers start sequentially as they receive the config |
+
+**How synchronized start works:**
+1. Controller sends test config to all workers
+2. Workers prepare (load config, initialize browsers, etc.)
+3. Controller waits for ALL workers to be ready
+4. Controller sends a future start time (`now + 5 seconds`)
+5. All workers begin at exactly the same moment
+
+**When to use `--sync-start`:**
+- Load testing where simultaneous load matters
+- Comparing performance across workers
+- Testing system behavior under sudden load spikes
+
+**When it's optional:**
+- Casual testing or development
+- When staggered worker start is acceptable
+
+### Network Requirements (Physical/Remote Machines)
+
+When running workers on separate physical machines or VMs, ensure proper network connectivity:
+
+**Firewall Rules:**
+
+| Machine | Port | Protocol | Direction | Purpose |
+|---------|------|----------|-----------|---------|
+| Worker | 8080 (or custom) | TCP/HTTP | Inbound from controller | API communication |
+
+**Required connectivity:**
+- Controller must be able to reach all workers on their configured ports
+- Workers do NOT need to reach back to the controller (pull-based architecture)
+- All communication (config, commands, results) goes over the single worker port
+- No additional ports needed for reporting - controller pulls results via `GET /results`
+
+**Example firewall setup (Linux/iptables):**
+```bash
+# On each worker machine, allow inbound on worker port
+sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
+
+# Or with ufw
+sudo ufw allow 8080/tcp
+```
+
+**Example firewall setup (Windows):**
+```powershell
+# Allow inbound on worker port
+New-NetFirewallRule -DisplayName "Perfornium Worker" -Direction Inbound -Port 8080 -Protocol TCP -Action Allow
+```
+
+**Cloud security groups (AWS/GCP/Azure):**
+- Create inbound rule allowing TCP port 8080 (or custom) from controller IP/subnet
+
+**Bind to all interfaces for remote access:**
+```bash
+# On worker machine - bind to 0.0.0.0 to accept remote connections
+perfornium worker --host 0.0.0.0 --port 8080
+```
+
+> **Note:** Using `--host localhost` (default) only accepts local connections. Use `--host 0.0.0.0` for remote access.
+
+### Common Issues
+
+**Only 1 VU running instead of expected count?**
+- Use `-s even` strategy, or add `capacity` to your workers.json
+
+**Workers not synchronized?**
+- Add `--sync-start` flag
+
+**Connection refused to remote worker?**
+- Ensure worker is bound to `0.0.0.0`: `perfornium worker --host 0.0.0.0 --port 8080`
+- Check firewall allows inbound TCP on the worker port
+- Verify network connectivity: `curl http://worker-ip:8080/health`
+
+---
+
 ## Architecture
 
 ### Master-Worker Model
