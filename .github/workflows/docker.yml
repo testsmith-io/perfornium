@@ -74,7 +74,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: testsmithio/perfornium-${{ matrix.image }}
+          images: testsmith/perfornium-${{ matrix.image }}
           tags: |
             type=raw,value=${{ steps.package.outputs.version }}
             type=raw,value=latest
@@ -105,16 +105,16 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Image | Description | Pull Command |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------------|--------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`controller\` | Test orchestrator | \`docker pull testsmithio/perfornium-controller\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`worker\` | Worker with browser support | \`docker pull testsmithio/perfornium-worker\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`worker-slim\` | Lightweight worker (API only) | \`docker pull testsmithio/perfornium-worker-slim\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`controller\` | Test orchestrator | \`docker pull testsmith/perfornium-controller\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`worker\` | Worker with browser support | \`docker pull testsmith/perfornium-worker\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`worker-slim\` | Lightweight worker (API only) | \`docker pull testsmith/perfornium-worker-slim\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Quick Start" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "# Start a worker" >> $GITHUB_STEP_SUMMARY
-          echo "docker run -p 8080:8080 testsmithio/perfornium-worker" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -p 8080:8080 testsmith/perfornium-worker" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Run a test with the controller" >> $GITHUB_STEP_SUMMARY
-          echo "docker run -v \$(pwd)/tests:/tests testsmithio/perfornium-controller run /tests/my-test.yml" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -v \$(pwd)/tests:/tests testsmith/perfornium-controller run /tests/my-test.yml" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
