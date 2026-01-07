@@ -18,6 +18,7 @@ import { WebhookOutput } from '../outputs/webhook';
 import { logger, LogLevel } from '../utils/logger';
 import { sleep } from '../utils/time';
 import { CSVDataProvider } from './csv-data-provider';
+import { RendezvousManager } from './rendezvous';
 import { FileManager } from '../utils/file-manager';
 
 export class TestRunner {
@@ -58,6 +59,9 @@ export class TestRunner {
     logger.info(`🚀 Starting test: ${this.config.name}`);
     this.isRunning = true;
     this.startTime = Date.now();
+
+    // Reset rendezvous manager for this test run
+    RendezvousManager.getInstance().reset();
 
     try {
       await this.initialize();
@@ -101,6 +105,9 @@ export class TestRunner {
   async stop(): Promise<void> {
     logger.info('⏹️  Stopping test...');
     this.isRunning = false;
+
+    // Stop rendezvous manager - releases any waiting VUs
+    RendezvousManager.getInstance().stop();
 
     // Stop all active VUs
     this.activeVUs.forEach(vu => vu.stop());

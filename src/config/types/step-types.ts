@@ -1,10 +1,10 @@
 import { StepHooks } from "./hooks";
 
-export type Step = RESTStep | SOAPStep | WebStep | CustomStep | WaitStep | ScriptStep;
+export type Step = RESTStep | SOAPStep | WebStep | CustomStep | WaitStep | ScriptStep | RendezvousStep;
 
 export interface BaseStep {
   name?: string;
-  type?: 'rest' | 'soap' | 'web' | 'custom' | 'wait' | 'script';
+  type?: 'rest' | 'soap' | 'web' | 'custom' | 'wait' | 'script' | 'rendezvous';
   condition?: string;
   continueOnError?: boolean;
   hooks?: StepHooks;
@@ -88,6 +88,22 @@ export interface ScriptStep extends BaseStep {
   params?: Record<string, any>;          // Parameters to pass to the function
   returns?: string;                      // Variable name to store return value
   timeout?: number;                      // Execution timeout in ms (default: 30000)
+}
+
+/**
+ * Rendezvous step for synchronized VU coordination
+ *
+ * Creates a synchronization point where VUs wait for each other before proceeding.
+ * Use this to create coordinated load spikes at specific points in the test.
+ *
+ * Example: 10 VUs simultaneously checking account balances
+ */
+export interface RendezvousStep extends BaseStep {
+  type: 'rendezvous';
+  rendezvous: string;                    // Unique name for the rendezvous point
+  count: number;                         // Number of VUs to wait for before releasing
+  timeout?: number | string;             // Timeout before releasing anyway (default: 30s, 0 = no timeout)
+  policy?: 'all' | 'count';              // Release policy: 'all' releases everyone, 'count' releases exactly count
 }
 
 export interface WebAction {

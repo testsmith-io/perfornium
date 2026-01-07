@@ -4,6 +4,7 @@ import { TestResult } from '../metrics/types';
 import { StepHooksManager } from './hooks-manager';
 import { ScriptExecutor } from './script-executor';
 import { ThresholdEvaluator } from './threshold-evaluator';
+import { RendezvousManager } from './rendezvous';
 import { sleep, parseTime } from '../utils/time';
 import { TemplateProcessor } from '../utils/template';
 import { logger } from '../utils/logger';
@@ -228,6 +229,9 @@ export class StepExecutor {
         break;
       case 'script':
         result = await this.executeScriptStep(processedStep, context);
+        break;
+      case 'rendezvous':
+        result = await this.executeRendezvousStep(processedStep, context);
         break;
       default:
         throw new Error(`Unsupported step type: ${(step as any).type}`);
@@ -493,6 +497,59 @@ export class StepExecutor {
       data: { waited: duration },
       custom_metrics: { wait_duration: duration }
     };
+  }
+
+  private async executeRendezvousStep(step: any, context: VUContext): Promise<any> {
+    const rendezvousManager = RendezvousManager.getInstance();
+
+    // Parse timeout - can be number (ms) or string ("30s", "1m")
+    let timeoutMs = 30000; // Default 30 seconds
+    if (step.timeout !== undefined) {
+      if (typeof step.timeout === 'number') {
+        timeoutMs = step.timeout;
+      } else if (typeof step.timeout === 'string') {
+        timeoutMs = parseTime(step.timeout);
+      }
+    }
+
+    try {
+      const result = await rendezvousManager.wait(
+        {
+          name: step.rendezvous,
+          count: step.count,
+          timeout: timeoutMs,
+          releasePolicy: step.policy || 'all'
+        },
+        context.vu_id
+      );
+
+      return {
+        success: true,
+        data: {
+          rendezvous: step.rendezvous,
+          released: result.released,
+          reason: result.reason,
+          vuCount: result.vuCount
+        },
+        response_time: result.waitTime,
+        custom_metrics: {
+          rendezvous_name: step.rendezvous,
+          rendezvous_wait_time: result.waitTime,
+          rendezvous_reason: result.reason,
+          rendezvous_vu_count: result.vuCount
+        },
+        shouldRecord: true // Always record rendezvous timing
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+        custom_metrics: {
+          rendezvous_name: step.rendezvous,
+          rendezvous_error: true
+        }
+      };
+    }
   }
 
   private async executeScriptStep(step: any, context: VUContext): Promise<any> {

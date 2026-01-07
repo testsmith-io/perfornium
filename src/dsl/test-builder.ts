@@ -162,6 +162,31 @@ export class ScenarioBuilder {
         });
     }
 
+    /**
+     * Add a rendezvous point to synchronize Virtual Users
+     *
+     * @param name - Unique name for this rendezvous point
+     * @param count - Number of VUs to wait for before releasing
+     * @param options - Optional configuration (timeout, policy)
+     *
+     * @example
+     * scenario('Flash Sale')
+     *   .post('/cart/add', { productId: 'LIMITED-001' })
+     *   .rendezvous('checkout_sync', 10, { timeout: '30s' })
+     *   .post('/checkout', { paymentMethod: 'card' })
+     *   .done()
+     */
+    rendezvous(name: string, count: number, options?: { timeout?: string | number; policy?: 'all' | 'count' }): this {
+        return this.addStep({
+            name: `Rendezvous: ${name}`,
+            type: 'rendezvous',
+            rendezvous: name,
+            count,
+            ...(options?.timeout && { timeout: options.timeout }),
+            ...(options?.policy && { policy: options.policy })
+        } as any);
+    }
+
     // REST API step methods
     get(path: string, options?: any): this {
         return this.request('GET', path, options);

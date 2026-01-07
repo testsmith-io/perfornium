@@ -729,6 +729,179 @@ If a CSV file is not found:
 - VU continues without CSV data
 - Template variables remain unresolved (show as `{{variable}}`)
 
+## Common Use Cases
+
+### Dedicated Credentials per VU
+
+Each VU gets its own dedicated credentials that it uses throughout the entire test:
+
+**credentials.csv** (must have at least as many rows as VUs):
+```csv
+username,password
+user1,pass1
+user2,pass2
+user3,pass3
+user4,pass4
+user5,pass5
+```
+
+<!-- tabs:start -->
+
+#### **YAML**
+
+```yaml
+name: "Dedicated Credentials Test"
+
+global:
+  base_url: "https://api.example.com"
+  csv_data:
+    file: "data/credentials.csv"
+  csv_mode: next  # VU1 gets row 1, VU2 gets row 2, etc.
+
+load:
+  pattern: basic
+  virtual_users: 5  # Must not exceed CSV row count
+  duration: 10m
+
+scenarios:
+  - name: "User Session"
+    loop: 100  # Each VU runs 100 iterations with SAME credentials
+    steps:
+      - name: "Login"
+        method: POST
+        path: /api/login
+        json:
+          username: "{{username}}"
+          password: "{{password}}"
+        extract:
+          - name: token
+            type: json_path
+            expression: $.token
+
+      - name: "User Action"
+        method: GET
+        path: /api/profile
+        headers:
+          Authorization: "Bearer {{token}}"
+```
+
+#### **TypeScript**
+
+```typescript
+import { test } from '@testsmith/perfornium/dsl';
+
+export default test('Dedicated Credentials Test')
+  .baseUrl('https://api.example.com')
+  .scenario('User Session')
+    .loop(100)  // Each VU runs 100 iterations with SAME credentials
+    .withCSV('data/credentials.csv', { mode: 'next' })
+    .post('/api/login', {
+      username: '{{username}}',
+      password: '{{password}}'
+    })
+    .extract('token', '$.token')
+    .get('/api/profile')
+    .withHeaders({ Authorization: 'Bearer {{token}}' })
+    .done()
+  .withLoad({
+    pattern: 'basic',
+    virtual_users: 5,  // Must not exceed CSV row count
+    duration: '10m'
+  })
+  .build();
+```
+
+<!-- tabs:end -->
+
+**Behavior:**
+- VU 1 always uses `user1/pass1`
+- VU 2 always uses `user2/pass2`
+- VU 3 always uses `user3/pass3`
+- Each VU maintains its own session throughout the test
+
+### One-Time Use Credentials (Consumed)
+
+Each credential can only be used ONCE across the entire test (e.g., registration tokens, one-time passwords):
+
+**one-time-tokens.csv**:
+```csv
+token,email
+TOKEN-001,user1@example.com
+TOKEN-002,user2@example.com
+TOKEN-003,user3@example.com
+```
+
+<!-- tabs:start -->
+
+#### **YAML**
+
+```yaml
+name: "Registration Test"
+
+global:
+  base_url: "https://api.example.com"
+
+load:
+  pattern: basic
+  virtual_users: 3
+  duration: 5m
+
+scenarios:
+  - name: "User Registration"
+    csv_data:
+      file: "data/one-time-tokens.csv"
+      cycleOnExhaustion: false  # Stop VU when data runs out
+    csv_mode: unique  # Each row used only once, then removed
+    steps:
+      - name: "Register"
+        method: POST
+        path: /api/register
+        json:
+          token: "{{token}}"
+          email: "{{email}}"
+```
+
+#### **TypeScript**
+
+```typescript
+import { test } from '@testsmith/perfornium/dsl';
+
+export default test('Registration Test')
+  .baseUrl('https://api.example.com')
+  .scenario('User Registration')
+    .withCSV('data/one-time-tokens.csv', {
+      mode: 'unique',
+      cycleOnExhaustion: false  // Stop VU when data runs out
+    })
+    .post('/api/register', {
+      token: '{{token}}',
+      email: '{{email}}'
+    })
+    .done()
+  .withLoad({
+    pattern: 'basic',
+    virtual_users: 3,
+    duration: '5m'
+  })
+  .build();
+```
+
+<!-- tabs:end -->
+
+**Behavior:**
+- First VU to request gets `TOKEN-001` (removed from pool)
+- Second request gets `TOKEN-002` (removed from pool)
+- Third request gets `TOKEN-003` (removed from pool)
+- When pool is empty, VUs stop (no cycling)
+
+### Mode Comparison
+
+| Mode | Use Case | Row Reuse | VU Assignment |
+|------|----------|-----------|---------------|
+| `next` | Dedicated credentials per VU | Yes (same row per VU) | VU ID based |
+| `unique` | One-time tokens/codes | No (removed after use) | First-come-first-served |
+| `random` | Random test data | Yes (random selection) | Random |
+
 ## Best Practices
 
 1. **Use relative paths** - CSV files relative to project root
@@ -737,3 +910,4 @@ If a CSV file is not found:
 4. **Consider cycleOnExhaustion** - Set to `false` for one-time-use data (tokens, unique IDs)
 5. **Separate concerns** - Use global CSV for auth, scenario CSV for test-specific data
 6. **Use unique mode carefully** - Ensure you have enough data rows for your VU count and iterations
+7. **Match VU count to data** - For `next` mode, ensure CSV has at least as many rows as VUs

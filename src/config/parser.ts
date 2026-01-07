@@ -32,6 +32,9 @@ export class ConfigParser {
       config = this.parseContent(configContent);
     }
 
+    // Process includes (scenarios from external files)
+    config = await this.processIncludes(config, path.dirname(configPath));
+
     logger.debug(`Parsed config.global: ${JSON.stringify(config.global, null, 2)}`);
 
     // Setup faker configuration if specified
@@ -49,6 +52,64 @@ export class ConfigParser {
       const envConfig = await this.loadEnvironmentConfig(environment, path.dirname(configPath));
       return this.mergeConfigs(config, envConfig);
     }
+
+    return config;
+  }
+
+  /**
+   * Process includes - load scenarios from external files
+   *
+   * Supports:
+   * - includes: ["scenarios/login.yml", "scenarios/checkout.yml"]
+   * - Included files can contain single scenario or array of scenarios
+   * - Scenarios are merged with inline scenarios
+   */
+  private async processIncludes(config: any, baseDir: string): Promise<TestConfiguration> {
+    if (!config.includes || !Array.isArray(config.includes)) {
+      return config;
+    }
+
+    logger.debug(`Processing ${config.includes.length} include(s)`);
+
+    const includedScenarios: any[] = [];
+
+    for (const includePath of config.includes) {
+      const fullPath = path.isAbsolute(includePath)
+        ? includePath
+        : path.join(baseDir, includePath);
+
+      if (!fs.existsSync(fullPath)) {
+        throw new Error(`Included file not found: ${fullPath}`);
+      }
+
+      logger.debug(`Loading included file: ${fullPath}`);
+
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const parsed: any = this.parseContent(content);
+
+      // Support both single scenario object and array of scenarios
+      if (Array.isArray(parsed)) {
+        // File contains array of scenarios
+        includedScenarios.push(...parsed);
+      } else if (parsed.scenarios && Array.isArray(parsed.scenarios)) {
+        // File contains scenarios property
+        includedScenarios.push(...parsed.scenarios);
+      } else if (parsed.name && parsed.steps) {
+        // File contains single scenario
+        includedScenarios.push(parsed);
+      } else {
+        logger.warn(`Included file ${includePath} has no valid scenarios`);
+      }
+    }
+
+    // Merge included scenarios with inline scenarios
+    const inlineScenarios = config.scenarios || [];
+    config.scenarios = [...includedScenarios, ...inlineScenarios];
+
+    // Remove includes from config (no longer needed)
+    delete config.includes;
+
+    logger.debug(`Total scenarios after includes: ${config.scenarios.length}`);
 
     return config;
   }

@@ -3,3 +3,5 @@ export { VirtualUser } from './virtual-user';
 export { StepExecutor } from './step-executor';
 export { CSVDataProvider } from './csv-data-provider';
 export type { CSVDataRow } from './csv-data-provider';
+export { RendezvousManager } from './rendezvous';
+export type { RendezvousConfig, RendezvousResult, RendezvousStats } from './rendezvous';

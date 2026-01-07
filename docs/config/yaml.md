@@ -318,7 +318,322 @@ test('Arrival Rate Pattern')
 
 ## Scenarios
 
-Scenarios define the test steps that virtual users will execute:
+Scenarios define the test steps that virtual users will execute.
+
+### Weighted Scenarios
+
+Use weights to distribute VUs across scenarios proportionally. Weights are relative - they're normalized to percentages.
+
+```yaml
+# 50% of VUs run checkout, 25% run browse, 25% run search
+scenarios:
+  - name: "Checkout Flow"
+    weight: 50
+    steps:
+      - name: "Add to cart"
+        type: "rest"
+        method: "POST"
+        path: "/cart/add"
+
+  - name: "Browse Products"
+    weight: 25
+    steps:
+      - name: "List products"
+        type: "rest"
+        method: "GET"
+        path: "/products"
+
+  - name: "Search Products"
+    weight: 25
+    steps:
+      - name: "Search"
+        type: "rest"
+        method: "GET"
+        path: "/search?q=test"
+```
+
+**How weights work:**
+- Each VU randomly selects ONE scenario based on weight distribution
+- Weights are proportional (50/25/25 = 50%/25%/25%)
+- If weights don't sum to 100, they're normalized (e.g., 2/1/1 = 50%/25%/25%)
+- Default weight is 100 if not specified
+
+### Including Scenarios from External Files
+
+For maintainability, define scenarios in separate files and include them:
+
+**Main test file (`main-test.yml`):**
+```yaml
+name: "E-commerce Load Test"
+description: "Full e-commerce user journey"
+
+global:
+  base_url: "https://api.example.com"
+
+load:
+  pattern: "basic"
+  virtual_users: 100
+  duration: "10m"
+
+# Include scenarios from external files
+includes:
+  - "scenarios/checkout.yml"
+  - "scenarios/browse.yml"
+  - "scenarios/search.yml"
+
+# Optional: add inline scenarios too
+scenarios:
+  - name: "Health Check"
+    weight: 5
+    steps:
+      - name: "ping"
+        type: "rest"
+        method: "GET"
+        path: "/health"
+```
+
+**Scenario file (`scenarios/checkout.yml`):**
+```yaml
+# Option 1: Single scenario
+name: "Checkout Flow"
+weight: 50
+steps:
+  - name: "Add to cart"
+    type: "rest"
+    method: "POST"
+    path: "/cart/add"
+  - name: "Checkout"
+    type: "rest"
+    method: "POST"
+    path: "/checkout"
+```
+
+**Or multiple scenarios per file (`scenarios/browsing.yml`):**
+```yaml
+# Option 2: Array of scenarios
+- name: "Browse Products"
+  weight: 25
+  steps:
+    - name: "List"
+      type: "rest"
+      method: "GET"
+      path: "/products"
+
+- name: "View Product"
+  weight: 20
+  steps:
+    - name: "Get details"
+      type: "rest"
+      method: "GET"
+      path: "/products/1"
+```
+
+**Or with scenarios wrapper:**
+```yaml
+# Option 3: scenarios property
+scenarios:
+  - name: "Search"
+    weight: 25
+    steps:
+      - name: "Search"
+        type: "rest"
+        method: "GET"
+        path: "/search"
+```
+
+**Project structure example:**
+```
+my-load-tests/
+├── main-test.yml           # Main test config
+├── scenarios/
+│   ├── checkout.yml        # Checkout scenario (weight: 50)
+│   ├── browse.yml          # Browse scenario (weight: 25)
+│   └── search.yml          # Search scenario (weight: 25)
+├── config/
+│   └── environments/
+│       ├── dev.yml
+│       └── prod.yml
+└── data/
+    └── users.csv
+```
+
+### Mixed Web & API Scenarios
+
+Included files can contain any step type - REST, web (browser), SOAP, or mixed:
+
+**Main test (`e-commerce-test.yml`):**
+```yaml
+name: "E-commerce Full Journey"
+
+global:
+  base_url: "https://api.example.com"
+  browser:
+    type: "chromium"
+    headless: true
+
+load:
+  pattern: "basic"
+  virtual_users: 30
+  duration: "10m"
+
+includes:
+  - "scenarios/web-checkout.yml"    # Browser tests
+  - "scenarios/web-browse.yml"      # Browser tests
+  - "scenarios/api-search.yml"      # API tests
+```
+
+**`scenarios/web-checkout.yml`** (browser scenario):
+```yaml
+name: "Web Checkout Flow"
+weight: 50
+think_time: "2-4"
+steps:
+  - name: "Visit homepage"
+    type: "web"
+    action:
+      command: "goto"
+      url: "https://shop.example.com"
+
+  - name: "Search for product"
+    type: "web"
+    action:
+      command: "fill"
+      selector: "input[name='search']"
+      value: "laptop"
+
+  - name: "Submit search"
+    type: "web"
+    action:
+      command: "press"
+      selector: "input[name='search']"
+      key: "Enter"
+
+  - name: "Verify results loaded"
+    type: "web"
+    action:
+      command: "verify_exists"
+      selector: ".product-card"
+
+  - name: "Click first product"
+    type: "web"
+    action:
+      command: "click"
+      selector: ".product-card:first-child"
+
+  - name: "Add to cart"
+    type: "web"
+    action:
+      command: "click"
+      selector: "button.add-to-cart"
+
+  - name: "Verify cart updated"
+    type: "web"
+    action:
+      command: "verify_text"
+      selector: ".cart-count"
+      text: "1"
+
+  - name: "Go to checkout"
+    type: "web"
+    action:
+      command: "click"
+      selector: "a.checkout-btn"
+
+  - name: "Fill shipping address"
+    type: "web"
+    action:
+      command: "fill"
+      selector: "#address"
+      value: "{{faker.location.streetAddress}}"
+
+  - name: "Complete order"
+    type: "web"
+    action:
+      command: "click"
+      selector: "button.place-order"
+
+  - name: "Verify confirmation"
+    type: "web"
+    action:
+      command: "verify_exists"
+      selector: ".order-confirmation"
+```
+
+**`scenarios/web-browse.yml`** (browser scenario with CSV data):
+```yaml
+name: "Browse Categories"
+weight: 25
+think_time: "3-5"
+csv_data:
+  file: "data/categories.csv"
+  mode: "random"
+steps:
+  - name: "Visit category"
+    type: "web"
+    action:
+      command: "goto"
+      url: "https://shop.example.com/category/{{category_slug}}"
+
+  - name: "Wait for products"
+    type: "web"
+    action:
+      command: "wait_for_selector"
+      selector: ".product-grid"
+
+  - name: "Verify products visible"
+    type: "web"
+    action:
+      command: "verify_visible"
+      selector: ".product-card"
+
+  - name: "Sort by price"
+    type: "web"
+    action:
+      command: "select"
+      selector: "select.sort-by"
+      value: "price-asc"
+
+  - name: "Take screenshot"
+    type: "web"
+    action:
+      command: "screenshot"
+      options:
+        path: "results/screenshots/browse-{{__VU}}.png"
+```
+
+**`scenarios/api-search.yml`** (REST API scenario):
+```yaml
+name: "API Search Load"
+weight: 25
+loop: 5
+steps:
+  - name: "Search API"
+    type: "rest"
+    method: "GET"
+    path: "/api/v1/search"
+    query:
+      q: "{{faker.commerce.productName}}"
+      limit: 20
+    checks:
+      - type: "status"
+        value: 200
+      - type: "response_time"
+        value: 500
+        operator: "lt"
+
+  - name: "Get product"
+    type: "rest"
+    method: "GET"
+    path: "/api/v1/products/{{randomInt(1, 100)}}"
+    checks:
+      - type: "status"
+        value: 200
+```
+
+**Result distribution (30 VUs):**
+- ~15 VUs: Full browser checkout flow
+- ~7 VUs: Browser category browsing
+- ~8 VUs: API search requests
 
 ### Basic Scenario
 
@@ -528,10 +843,111 @@ Steps define individual actions within scenarios:
     // Custom JavaScript code
     const result = Math.random() * 100;
     context.variables.randomValue = result;
-    
+
     // Return data for metrics
     return { customMetric: result };
 ```
+
+### Rendezvous Step
+
+Rendezvous points synchronize Virtual Users at specific points in the test to create coordinated load spikes.
+
+<!-- tabs:start -->
+
+#### **YAML**
+
+```yaml
+- type: rendezvous
+  name: "Checkout Sync"
+  rendezvous: checkout_rush      # Unique name for this sync point
+  count: 10                      # Wait for 10 VUs before releasing
+  timeout: 30s                   # Maximum wait time (default: 30s)
+  policy: all                    # Release policy: 'all' or 'count'
+```
+
+#### **TypeScript**
+
+```typescript
+scenario('Flash Sale')
+  .post('/cart/add', { productId: 'LIMITED-001' })
+  .rendezvous('checkout_rush', 10, { timeout: '30s' })
+  .post('/checkout', { paymentMethod: 'card' })
+  .done()
+```
+
+<!-- tabs:end -->
+
+**Use cases:**
+- Flash sales with simultaneous checkouts
+- Database stress tests with concurrent writes
+- Peak load simulation at specific points
+
+**Configuration options:**
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `rendezvous` | string | Yes | - | Unique identifier for this sync point |
+| `count` | number | Yes | - | Number of VUs to wait for |
+| `timeout` | string/number | No | `30s` | Max wait time before releasing anyway |
+| `policy` | string | No | `all` | `all` releases everyone, `count` releases exactly N |
+
+**Example - Bank balance check:**
+
+<!-- tabs:start -->
+
+#### **YAML**
+
+```yaml
+scenarios:
+  - name: "Synchronized Balance Check"
+    steps:
+      - name: "Login"
+        method: POST
+        path: /api/auth/login
+        json:
+          username: "{{csv:username}}"
+          password: "{{csv:password}}"
+
+      # Wait for all 10 VUs to reach this point
+      - type: rendezvous
+        name: "Balance Check Sync"
+        rendezvous: balance_sync
+        count: 10
+        timeout: 60s
+
+      # All 10 VUs execute this simultaneously
+      - name: "Check Balance"
+        method: GET
+        path: /api/account/balance
+```
+
+#### **TypeScript**
+
+```typescript
+import { test } from '@testsmith/perfornium/dsl';
+
+export default test('Balance Check Test')
+  .baseUrl('https://api.example.com')
+  .scenario('Synchronized Balance Check')
+    .post('/api/auth/login', {
+      username: '{{csv:username}}',
+      password: '{{csv:password}}'
+    }, { name: 'Login' })
+    .extract('token', '$.token')
+
+    // Wait for all 10 VUs to reach this point
+    .rendezvous('balance_sync', 10, { timeout: '60s' })
+
+    // All 10 VUs execute this simultaneously
+    .get('/api/account/balance', { name: 'Check Balance' })
+    .done()
+  .withLoad({ pattern: 'basic', virtual_users: 10, duration: '1m' })
+  .build();
+```
+
+<!-- tabs:end -->
+
+See [Rendezvous Points](../advanced/rendezvous.md) for comprehensive documentation.
 
 ## Data and Templating
 
