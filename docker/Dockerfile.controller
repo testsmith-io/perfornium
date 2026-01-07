@@ -1,0 +1,37 @@
+# Perfornium Controller (Orchestrator)
+# Runs distributed tests by coordinating workers
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install perfornium globally
+RUN npm install -g @testsmith/perfornium
+
+# Create directories for tests and results
+RUN mkdir -p /tests /results /data
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PERFORNIUM_RESULTS_DIR=/results
+
+WORKDIR /tests
+
+# The controller runs tests
+# Mount your test files to /tests
+# Mount results directory to /results
+# Mount CSV/data files to /data
+
+ENTRYPOINT ["perfornium"]
+CMD ["--help"]
+
+# Examples:
+#
+# Run a single test:
+#   docker run -v $(pwd)/tests:/tests -v $(pwd)/results:/results \
+#     perfornium/controller run /tests/my-test.yml --report
+#
+# Run distributed test:
+#   docker run -v $(pwd)/tests:/tests -v $(pwd)/results:/results \
+#     perfornium/controller distributed /tests/my-test.yml \
+#     --workers worker-1:8080,worker-2:8080 --sync-start --report

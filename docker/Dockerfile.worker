@@ -1,0 +1,48 @@
+# Perfornium Worker (with Browser support)
+# Executes test workloads distributed from the controller
+
+FROM mcr.microsoft.com/playwright:v1.40.0-focal
+
+WORKDIR /app
+
+# Install perfornium globally
+RUN npm install -g @testsmith/perfornium
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PERFORNIUM_WORKER_PORT=8080
+
+# Each worker listens on port 8080 inside the container
+# When running multiple workers, map to different host ports:
+#   docker run -p 8081:8080 perfornium/worker  (worker 1)
+#   docker run -p 8082:8080 perfornium/worker  (worker 2)
+#   docker run -p 8083:8080 perfornium/worker  (worker 3)
+#
+# Or use Docker networking with container names:
+#   docker network create perf-net
+#   docker run -d --name worker-1 --network perf-net perfornium/worker
+#   docker run -d --name worker-2 --network perf-net perfornium/worker
+#   Then reference as: --workers worker-1:8080,worker-2:8080
+
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Start worker
+ENTRYPOINT ["perfornium", "worker"]
+CMD ["--port", "8080"]
+
+# Examples:
+#
+# Single worker:
+#   docker run -p 8080:8080 perfornium/worker
+#
+# With custom capacity:
+#   docker run -p 8080:8080 perfornium/worker --port 8080 --capacity 50
+#
+# Multiple workers on different ports:
+#   docker run -d -p 8081:8080 --name worker-1 perfornium/worker
+#   docker run -d -p 8082:8080 --name worker-2 perfornium/worker
+#   docker run -d -p 8083:8080 --name worker-3 perfornium/worker

@@ -48,7 +48,15 @@
     "dev": "tsc --watch",
     "dev:link": "npm run build && npm link",
     "dev:test": "npm run build && node dist/cli/cli.js",
-    "report:web-vitals": "node generate-web-vitals-report.js"
+    "report:web-vitals": "node generate-web-vitals-report.js",
+    "docker:build:controller": "docker build -t perfornium/controller -f docker/Dockerfile.controller .",
+    "docker:build:worker": "docker build -t perfornium/worker -f docker/Dockerfile.worker .",
+    "docker:build:worker-slim": "docker build -t perfornium/worker-slim -f docker/Dockerfile.worker-slim .",
+    "docker:build:all": "npm run docker:build:controller && npm run docker:build:worker && npm run docker:build:worker-slim",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d worker-1 worker-2 worker-3",
+    "docker:up:slim": "docker compose -f docker/docker-compose.slim.yml up -d worker-1 worker-2 worker-3",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f"
   },
   "keywords": [
     "performance",

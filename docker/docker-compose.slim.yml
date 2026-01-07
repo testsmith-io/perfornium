@@ -1,0 +1,64 @@
+# Perfornium Docker Compose (Slim - API only)
+# Lightweight setup for REST/SOAP testing without browser support
+
+services:
+  controller:
+    image: testsmithio/perfornium-controller:latest
+    container_name: perfornium-controller
+    volumes:
+      - ./tests:/tests:ro
+      - ./results:/results
+      - ./data:/data:ro
+    depends_on:
+      worker-1:
+        condition: service_healthy
+      worker-2:
+        condition: service_healthy
+      worker-3:
+        condition: service_healthy
+    networks:
+      - perfornium-net
+
+  # Slim workers - smaller images, lower resources
+  worker-1:
+    image: testsmithio/perfornium-worker-slim:latest
+    container_name: perfornium-worker-1
+    ports:
+      - "8081:8080"
+    networks:
+      - perfornium-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  worker-2:
+    image: testsmithio/perfornium-worker-slim:latest
+    container_name: perfornium-worker-2
+    ports:
+      - "8082:8080"
+    networks:
+      - perfornium-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  worker-3:
+    image: testsmithio/perfornium-worker-slim:latest
+    container_name: perfornium-worker-3
+    ports:
+      - "8083:8080"
+    networks:
+      - perfornium-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+networks:
+  perfornium-net:
+    driver: bridge

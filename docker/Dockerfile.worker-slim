@@ -1,0 +1,36 @@
+# Perfornium Worker (Slim - API only, no browser)
+# Lightweight worker for REST/SOAP testing
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install curl for health checks and perfornium globally
+RUN apt-get update && apt-get install -y curl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    npm install -g @testsmith/perfornium
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PERFORNIUM_WORKER_PORT=8080
+ENV PERFORNIUM_SKIP_BROWSER=true
+
+# Each worker listens on port 8080 inside the container
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Start worker
+ENTRYPOINT ["perfornium", "worker"]
+CMD ["--port", "8080"]
+
+# Examples:
+#
+# Single worker:
+#   docker run -p 8080:8080 perfornium/worker-slim
+#
+# Multiple workers (using Docker Compose or separate ports):
+#   docker run -d -p 8081:8080 --name worker-1 perfornium/worker-slim
+#   docker run -d -p 8082:8080 --name worker-2 perfornium/worker-slim
