@@ -46,6 +46,14 @@
             font-weight: 800;
             color: white;
             text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
         }
 
         .nav-links {
@@ -416,7 +424,19 @@
 <body>
 <header>
     <nav class="container">
-        <a href="#" class="logo">Perfornium</a>
+        <a href="#" class="logo">
+            <svg class="logo-icon" viewBox="0 0 100 100">
+                <defs>
+                    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#00d4ff"/>
+                        <stop offset="100%" stop-color="#9c40ff"/>
+                    </linearGradient>
+                </defs>
+                <circle cx="50" cy="50" r="45" fill="url(#logoGradient)"/>
+                <text x="50" y="65" font-size="50" font-weight="bold" fill="white" text-anchor="middle" font-family="Arial">P</text>
+            </svg>
+            Perfornium
+        </a>
         <ul class="nav-links" id="navLinks">
             <li><a href="#features">Features</a></li>
             <li><a href="/docs">Documentation</a></li>
