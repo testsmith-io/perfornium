@@ -1,18 +1,21 @@
 import { logger } from '../../utils/logger';
 import * as http from 'http';
 import { URL } from 'url';
+import { WebSocketServer, WebSocket } from 'ws';
 import { TestRunner } from '../../core/test-runner';
 import { TestConfiguration } from '../../config/types';
 import { WorkerStatus } from '../../distributed/remote-worker';
 
 export class WorkerServer {
   private server: http.Server;
+  private wss: WebSocketServer;
   private host: string;
   private port: number;
   private status: WorkerStatus;
   private activeRunner: TestRunner | null = null;
   private preparedConfig: TestConfiguration | null = null;
   private completedRunner: TestRunner | null = null;
+  private wsClients: Map<WebSocket, TestRunner | null> = new Map();
 
   constructor(host: string = 'localhost', port: number = 8080) {
     this.host = host;
@@ -29,6 +32,152 @@ export class WorkerServer {
     this.server = http.createServer((req, res) => {
       this.handleRequest(req, res);
     });
+
+    // WebSocket server for distributed testing
+    this.wss = new WebSocketServer({
+      server: this.server,
+      path: '/perfornium'
+    });
+
+    this.setupWebSocketHandlers();
+  }
+
+  private setupWebSocketHandlers(): void {
+    this.wss.on('connection', (ws: WebSocket, req) => {
+      const clientIP = req.socket.remoteAddress;
+      logger.info(`🔌 WebSocket client connected from ${clientIP}`);
+      this.wsClients.set(ws, null);
+
+      ws.on('message', async (data) => {
+        try {
+          const message = JSON.parse(data.toString());
+          await this.handleWebSocketMessage(ws, message);
+        } catch (error: any) {
+          logger.error('❌ Error handling WebSocket message:', error);
+          this.sendWsError(ws, error.message);
+        }
+      });
+
+      ws.on('close', () => {
+        logger.info('👋 WebSocket client disconnected');
+        const runner = this.wsClients.get(ws);
+        if (runner) {
+          runner.stop().catch(err =>
+            logger.error('❌ Error stopping runner on disconnect:', err)
+          );
+        }
+        this.wsClients.delete(ws);
+      });
+
+      ws.on('error', (error) => {
+        logger.error('❌ WebSocket error:', error);
+        this.wsClients.delete(ws);
+      });
+
+      // Send heartbeat
+      this.sendWsMessage(ws, { type: 'heartbeat' });
+    });
+  }
+
+  private async handleWebSocketMessage(ws: WebSocket, message: any): Promise<void> {
+    switch (message.type) {
+      case 'execute_test':
+        await this.executeWsTest(ws, message.config);
+        break;
+
+      case 'stop_test':
+        await this.stopWsTest(ws);
+        break;
+
+      case 'heartbeat_ack':
+        // Client is alive
+        break;
+
+      default:
+        logger.warn(`⚠️ Unknown WebSocket message type: ${message.type}`);
+    }
+  }
+
+  private async executeWsTest(ws: WebSocket, config: TestConfiguration): Promise<void> {
+    try {
+      // Stop any existing test for this connection
+      await this.stopWsTest(ws);
+
+      const runner = new TestRunner(config);
+      this.wsClients.set(ws, runner);
+
+      logger.info(`🚀 Starting test via WebSocket: ${config.name}`);
+
+      const metrics = runner.getMetrics();
+
+      // Listen for individual results
+      metrics.on('result', (result: any) => {
+        this.sendWsMessage(ws, {
+          type: 'test_result',
+          data: result
+        });
+      });
+
+      // Send progress updates on batch events
+      metrics.on('batch', (batch: any) => {
+        this.sendWsMessage(ws, {
+          type: 'test_progress',
+          data: {
+            completed: batch.batch_number * batch.batch_size,
+            total: batch.batch_size
+          }
+        });
+      });
+
+      // Log test start
+      this.sendWsMessage(ws, {
+        type: 'log',
+        message: `Starting test: ${config.name}`
+      });
+
+      // Start the test
+      runner.run().then(() => {
+        const summary = metrics.getSummary();
+        this.sendWsMessage(ws, {
+          type: 'test_completed',
+          summary: summary
+        });
+        this.wsClients.set(ws, null);
+        logger.info(`✅ Test completed via WebSocket: ${config.name}`);
+      }).catch((error) => {
+        this.sendWsMessage(ws, {
+          type: 'test_error',
+          error: error.message
+        });
+        this.wsClients.set(ws, null);
+        logger.error(`❌ Test failed via WebSocket: ${error.message}`);
+      });
+
+    } catch (error: any) {
+      this.sendWsMessage(ws, {
+        type: 'test_error',
+        error: error.message
+      });
+    }
+  }
+
+  private async stopWsTest(ws: WebSocket): Promise<void> {
+    const runner = this.wsClients.get(ws);
+    if (runner) {
+      await runner.stop();
+      this.wsClients.set(ws, null);
+      this.sendWsMessage(ws, { type: 'test_stopped' });
+    }
+  }
+
+  private sendWsMessage(ws: WebSocket, message: any): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    }
+  }
+
+  private sendWsError(ws: WebSocket, error: string): void {
+    this.sendWsMessage(ws, { type: 'error', error });
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -262,6 +411,7 @@ export class WorkerServer {
       this.server.listen(this.port, this.host, () => {
         logger.info(`🚀 Worker server started on ${this.host}:${this.port}`);
         logger.info(`📋 Available endpoints:`);
+        logger.info(`   WS   ws://${this.host}:${this.port}/perfornium (distributed testing)`);
         logger.info(`   GET  http://${this.host}:${this.port}/health`);
         logger.info(`   GET  http://${this.host}:${this.port}/status`);
         logger.info(`   POST http://${this.host}:${this.port}/prepare`);

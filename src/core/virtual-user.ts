@@ -351,9 +351,20 @@ export class VirtualUser {
             }
 
             // Apply hierarchical think time: step > scenario > global
-            const effectiveThinkTime = this.getEffectiveThinkTime(step, scenario);
-            if (effectiveThinkTime !== undefined) {
-              await this.applyThinkTime(effectiveThinkTime);
+            // Skip think time if the NEXT step is a verification/wait step - they measure app
+            // responsiveness and should run immediately after the triggering action
+            const nextStep = scenario.steps[stepIndex + 1] as any;
+            const nextCommand = nextStep?.action?.command || '';
+            const nextIsVerificationOrWait = nextCommand.startsWith('verify_') ||
+                                              nextCommand.startsWith('wait_for_') ||
+                                              nextCommand === 'measure_web_vitals' ||
+                                              nextCommand === 'performance_audit';
+
+            if (!nextIsVerificationOrWait) {
+              const effectiveThinkTime = this.getEffectiveThinkTime(step, scenario);
+              if (effectiveThinkTime !== undefined) {
+                await this.applyThinkTime(effectiveThinkTime);
+              }
             }
 
           } catch (error) {

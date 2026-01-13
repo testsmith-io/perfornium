@@ -15,7 +15,8 @@ export interface LoadPhase {
   vus?: number;
   virtual_users?: number;
   ramp_up?: string;
-  duration: string; // Required for each phase
+  duration?: string; // Duration for timed tests (e.g., "30s", "1m")
+  iterations?: number; // Number of iterations per VU (alternative to duration)
   steps?: LoadStep[];
   rate?: number; // For arrivals pattern
 }

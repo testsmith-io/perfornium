@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as http from 'http';
+import * as fs from 'fs';
 import { ConfigParser } from '../../config/parser';
 import { ConfigValidator } from '../../config/validator';
 import { TestRunner } from '../../core/test-runner';
@@ -14,6 +15,10 @@ export interface RunOptions {
   verbose?: boolean;
   debug?: boolean;
   maxUsers?: string;
+  vus?: string;
+  iterations?: string;
+  duration?: string;
+  rampUp?: string;
   global?: string[];  // Array of "key=value" or "key.nested=value" strings
 }
 
@@ -94,16 +99,48 @@ export async function runCommand(
       await startMockServer(3000);
     }
 
-    // Apply max users override
-    if (options.maxUsers) {
-      const maxUsers = parseInt(options.maxUsers);
+    // Apply load pattern overrides
+    if (options.maxUsers || options.vus || options.iterations || options.duration || options.rampUp) {
       const { getPrimaryLoadPhase } = await import('../../config/types/load-config');
       const primaryPhase = getPrimaryLoadPhase(config.load);
-      const currentUsers = primaryPhase.virtual_users || primaryPhase.vus;
 
-      if (currentUsers && currentUsers > maxUsers) {
-        logger.warn(`Limiting virtual users from ${currentUsers} to ${maxUsers}`);
-        primaryPhase.virtual_users = maxUsers;
+      // Virtual users override
+      if (options.vus) {
+        const vus = parseInt(options.vus);
+        logger.info(`Overriding virtual users to ${vus}`);
+        primaryPhase.virtual_users = vus;
+        if (primaryPhase.vus) primaryPhase.vus = vus;
+      }
+
+      // Max users override (limit, not set)
+      if (options.maxUsers) {
+        const maxUsers = parseInt(options.maxUsers);
+        const currentUsers = primaryPhase.virtual_users || primaryPhase.vus;
+        if (currentUsers && currentUsers > maxUsers) {
+          logger.warn(`Limiting virtual users from ${currentUsers} to ${maxUsers}`);
+          primaryPhase.virtual_users = maxUsers;
+        }
+      }
+
+      // Iterations override
+      if (options.iterations) {
+        const iterations = parseInt(options.iterations);
+        logger.info(`Overriding iterations to ${iterations}`);
+        primaryPhase.iterations = iterations;
+      }
+
+      // Duration override
+      if (options.duration) {
+        logger.info(`Overriding duration to ${options.duration}`);
+        primaryPhase.duration = options.duration;
+        // Remove iterations if duration is set (they're mutually exclusive)
+        delete primaryPhase.iterations;
+      }
+
+      // Ramp-up override
+      if (options.rampUp) {
+        logger.info(`Overriding ramp-up to ${options.rampUp}`);
+        primaryPhase.ramp_up = options.rampUp;
       }
     }
     
@@ -135,12 +172,30 @@ export async function runCommand(
     }
 
     // Override output directory if specified
-    if (options.output && processedConfig.outputs) {
-      processedConfig.outputs.forEach(output => {
-        if (output.file) {
-          output.file = path.join(options.output!, path.basename(output.file));
-        }
-      });
+    if (options.output) {
+      // Ensure output directory exists
+      if (!fs.existsSync(options.output)) {
+        fs.mkdirSync(options.output, { recursive: true });
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').substring(0, 19);
+      const testName = processedConfig.name || path.basename(configPath, path.extname(configPath));
+      const defaultOutputFile = path.join(options.output, `${testName}-${timestamp}.json`);
+
+      if (processedConfig.outputs && processedConfig.outputs.length > 0) {
+        // Modify existing outputs to use the specified directory
+        processedConfig.outputs.forEach(output => {
+          if (output.file) {
+            output.file = path.join(options.output!, path.basename(output.file));
+          }
+        });
+      } else {
+        // No outputs configured - add default JSON output
+        processedConfig.outputs = [{
+          type: 'json',
+          file: defaultOutputFile
+        }];
+      }
     }
 
     // Enable report generation if requested
@@ -155,20 +210,115 @@ export async function runCommand(
     if (options.workers) {
       const { WorkerManager } = await import('../../workers/manager');
       const manager = new WorkerManager();
-      
+
       const workerAddresses = options.workers.split(',').map(w => w.trim());
       for (const address of workerAddresses) {
         await manager.addWorker(address);
       }
-      
-      await manager.distributeTest(processedConfig);
-      await manager.waitForCompletion();
-      
+
+      // Initialize metrics before distributing test
       const metrics = manager.getAggregatedMetrics();
+      metrics.start();
+
+      // Track results as they come in
+      let resultCount = 0;
+      manager.on('result', () => {
+        resultCount++;
+      });
+
+      await manager.distributeTest(processedConfig);
+      logger.info('📡 Test distributed to workers, starting progress reporting...');
+
+      // Start live progress reporting for dashboard
+      let lastReportedResultIndex = 0;
+      let isRunning = true;
+
+      // Output function for progress reporting
+      const outputProgress = () => {
+        if (!isRunning) return;
+
+        const summary = metrics.getSummary();
+        const currentRequests = summary.total_requests || 0;
+        const rps = summary.requests_per_second || 0;
+        const p50 = summary.percentiles?.[50] || 0;
+        const p90 = summary.percentiles?.[90] || 0;
+        const p95 = summary.percentiles?.[95] || 0;
+        const p99 = summary.percentiles?.[99] || 0;
+        const successRate = summary.success_rate || 0;
+
+        // Output progress line for dashboard parsing
+        const progressLine = `[PROGRESS] VUs: ${manager.getWorkerCount()} | Requests: ${currentRequests} | Errors: ${summary.failed_requests || 0} | Avg RT: ${(summary.avg_response_time || 0).toFixed(0)}ms | RPS: ${rps.toFixed(1)} | P50: ${p50.toFixed(0)}ms | P90: ${p90.toFixed(0)}ms | P95: ${p95.toFixed(0)}ms | P99: ${p99.toFixed(0)}ms | Success: ${successRate.toFixed(1)}%`;
+        console.log(progressLine);
+
+        // Output step statistics if available
+        if (summary.step_statistics && summary.step_statistics.length > 0) {
+          const stepData = summary.step_statistics.map((s: any) => ({
+            n: s.step_name,
+            s: s.scenario,
+            r: s.total_requests,
+            e: s.failed_requests,
+            a: Math.round(s.avg_response_time),
+            p50: Math.round(s.percentiles?.[50] || 0),
+            p95: Math.round(s.percentiles?.[95] || 0),
+            p99: Math.round(s.percentiles?.[99] || 0),
+            sr: Math.round(s.success_rate * 10) / 10
+          }));
+          console.log(`[STEPS] ${JSON.stringify(stepData)}`);
+        }
+
+        // Output individual response times for charts
+        const allResults = metrics.getResults();
+        if (allResults.length > lastReportedResultIndex) {
+          const newResults = allResults.slice(lastReportedResultIndex, lastReportedResultIndex + 50);
+          const rtData = newResults.map((r: any) => ({
+            t: r.timestamp,
+            v: Math.round(r.duration),
+            s: r.success ? 1 : 0,
+            n: r.step_name || r.action || 'unknown'  // Include step/request name for coloring
+          }));
+          if (rtData.length > 0) {
+            console.log(`[RT] ${JSON.stringify(rtData)}`);
+          }
+          lastReportedResultIndex = Math.min(allResults.length, lastReportedResultIndex + 50);
+        }
+
+        // Output top 10 errors if any
+        if (summary.error_details && summary.error_details.length > 0) {
+          const topErrors = summary.error_details.slice(0, 10).map((e: any) => ({
+            scenario: e.scenario,
+            action: e.action,
+            status: e.status,
+            error: e.error?.substring(0, 200), // Truncate long error messages
+            url: e.request_url,
+            count: e.count
+          }));
+          console.log(`[ERRORS] ${JSON.stringify(topErrors)}`);
+        }
+      };
+
+      // Output initial progress immediately
+      outputProgress();
+
+      // Then continue outputting every 500ms
+      const progressInterval = setInterval(outputProgress, 500);
+
+      await manager.waitForCompletion();
+      logger.info('✅ All workers completed, cleaning up...');
+
+      // Stop progress reporting
+      isRunning = false;
+      clearInterval(progressInterval);
+
       const summary = metrics.getSummary();
       logger.success(`Distributed test completed: ${summary.success_rate.toFixed(2)}% success rate`);
-      
+      logger.info(`📊 Total requests: ${summary.total_requests}, Success rate: ${summary.success_rate.toFixed(1)}%`);
+
+      logger.info('🧹 Starting cleanup...');
       await manager.cleanup();
+      logger.info('✅ Cleanup completed, exiting...');
+
+      // Force exit after distributed test cleanup to ensure process terminates
+      process.exit(0);
     } else {
       const runner = new TestRunner(processedConfig);
       

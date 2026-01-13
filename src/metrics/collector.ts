@@ -36,14 +36,27 @@ export class MetricsCollector extends EventEmitter {
   private errorDetails: Map<string, ErrorDetail> = new Map();
   private vuStartEvents: VUStartEvent[] = [];
   private loadPatternType: string = 'basic';
-  
+
+  // Running statistics (accurate even when individual results are dropped)
+  private runningStats = {
+    totalRequests: 0,
+    successfulRequests: 0,
+    failedRequests: 0,
+    totalDuration: 0,  // Sum of all durations for averaging
+    minDuration: Infinity,
+    maxDuration: 0,
+    durations: [] as number[],  // For percentile calculation (limited size)
+  };
+  private readonly maxDurationsForPercentiles = 10000;  // Keep last N for percentiles
+  private readonly maxStoredResults = 50000;  // Max individual results to keep in memory
+
   // Real-time batch processing
   private realtimeConfig: RealtimeConfig;
   private batchBuffer: TestResult[] = [];
   private batchTimer: NodeJS.Timeout | null = null;
   private batchCounter: number = 0;
   private csvHeaderWritten: boolean = false;
-  
+
   // Default output paths
   private defaultJsonPath: string = 'results/live-results.json';
   private defaultCsvPath: string = 'results/live-results.csv';
@@ -139,7 +152,18 @@ export class MetricsCollector extends EventEmitter {
     this.batchBuffer = [];
     this.batchCounter = 0;
     this.csvHeaderWritten = false;
-    
+
+    // Reset running statistics
+    this.runningStats = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      totalDuration: 0,
+      minDuration: Infinity,
+      maxDuration: 0,
+      durations: [],
+    };
+
     if (this.realtimeConfig.enabled && this.realtimeConfig.interval_ms) {
       this.startBatchTimer();
     }
@@ -153,7 +177,34 @@ export class MetricsCollector extends EventEmitter {
   }
 
   recordResult(result: TestResult): void {
-    this.results.push(result);
+    // Update running statistics (always accurate regardless of stored results)
+    this.runningStats.totalRequests++;
+    if (result.success) {
+      this.runningStats.successfulRequests++;
+      const duration = result.duration || 0;
+      this.runningStats.totalDuration += duration;
+      this.runningStats.minDuration = Math.min(this.runningStats.minDuration, duration);
+      this.runningStats.maxDuration = Math.max(this.runningStats.maxDuration, duration);
+
+      // Keep limited durations for percentile calculation (reservoir sampling)
+      if (this.runningStats.durations.length < this.maxDurationsForPercentiles) {
+        this.runningStats.durations.push(duration);
+      } else {
+        // Randomly replace an existing duration (reservoir sampling)
+        const replaceIndex = Math.floor(Math.random() * this.runningStats.totalRequests);
+        if (replaceIndex < this.maxDurationsForPercentiles) {
+          this.runningStats.durations[replaceIndex] = duration;
+        }
+      }
+    } else {
+      this.runningStats.failedRequests++;
+    }
+
+    // Store result only if under limit (for detailed analysis)
+    if (this.results.length < this.maxStoredResults) {
+      this.results.push(result);
+    }
+
     this.emit('result', result);
 
     // Track detailed error information
@@ -161,10 +212,15 @@ export class MetricsCollector extends EventEmitter {
       this.trackErrorDetail(result);
     }
 
-    // Add to batch buffer for real-time processing
+    // Add to batch buffer for real-time processing (with safety limit)
     if (this.realtimeConfig.enabled) {
+      // Safety limit: if buffer exceeds 1000 items, force flush to prevent memory issues
+      if (this.batchBuffer.length >= 1000) {
+        this.flushBatch();
+      }
+
       this.batchBuffer.push(result);
-      
+
       // Check if we should flush based on batch size (if not using intervals)
       if (!this.realtimeConfig.interval_ms) {
         const batchSize = this.realtimeConfig.batch_size || 10;
@@ -623,24 +679,29 @@ export class MetricsCollector extends EventEmitter {
   getResults(): TestResult[] {
     return [...this.results];
   }
-// Add method to configure output paths without recreating the collector
-// Add method to disable incremental files if needed
-    getSummary(): MetricsSummary {
-    const totalRequests = this.results.length;
-    const successfulRequests = this.results.filter(r => r.success).length;
-    const failedRequests = totalRequests - successfulRequests;
-    
-    const durations = this.results.filter(r => r.success).map(r => r.duration);
+  getSummary(): MetricsSummary {
+    // Use running statistics for accurate totals (even when individual results are limited)
+    const totalRequests = this.runningStats.totalRequests;
+    const successfulRequests = this.runningStats.successfulRequests;
+    const failedRequests = this.runningStats.failedRequests;
+
+    // Use sampled durations for percentiles (reservoir sampling ensures representative sample)
+    const durations = this.runningStats.durations;
     const totalDuration = (Date.now() - this.startTime) / 1000;
-    
-    // Error distribution by error message
+
+    // Calculate average from running totals (accurate even with limited stored results)
+    const avgResponseTime = successfulRequests > 0
+      ? this.runningStats.totalDuration / successfulRequests
+      : 0;
+
+    // Error distribution from stored results (may be limited but representative)
     const errorDistribution: Record<string, number> = {};
     this.results.filter(r => !r.success).forEach(r => {
       const error = r.error || 'Unknown error';
       errorDistribution[error] = (errorDistribution[error] || 0) + 1;
     });
 
-    // Status code distribution
+    // Status code distribution from stored results
     const statusDistribution: Record<number, number> = {};
     this.results.forEach(r => {
       if (r.status) {
@@ -657,9 +718,9 @@ export class MetricsCollector extends EventEmitter {
       successful_requests: successfulRequests,
       failed_requests: failedRequests,
       success_rate: totalRequests > 0 ? (successfulRequests / totalRequests) * 100 : 0,
-      avg_response_time: durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0,
-      min_response_time: durations.length > 0 ? Math.min(...durations) : 0,
-      max_response_time: durations.length > 0 ? Math.max(...durations) : 0,
+      avg_response_time: avgResponseTime,
+      min_response_time: this.runningStats.minDuration === Infinity ? 0 : this.runningStats.minDuration,
+      max_response_time: this.runningStats.maxDuration,
       percentiles: this.calculatePercentiles(durations),
       requests_per_second: totalDuration > 0 ? (totalRequests / totalDuration) : 0,
       bytes_per_second: responseSizes.length > 0 && totalDuration > 0
