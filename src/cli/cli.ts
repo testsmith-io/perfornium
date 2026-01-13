@@ -7,6 +7,7 @@ import { reportCommand } from './commands/report';
 import { workerCommand } from './commands/worker';
 import { initCommand } from './commands/init';
 import { mockCommand } from './commands/mock';
+import { dashboardCommand } from './commands/dashboard';
 import { startNativeRecording } from '../recorder/native-recorder';
 import { distributedCommand } from './commands/distributed';
 
@@ -35,6 +36,10 @@ program
     .option('-v, --verbose', 'Enable verbose logging (info level)')
     .option('-d, --debug', 'Enable debug logging (very detailed)')
     .option('--max-users <number>', 'Maximum virtual users override')
+    .option('--vus <number>', 'Override virtual users count')
+    .option('--iterations <number>', 'Override iterations per VU')
+    .option('--duration <duration>', 'Override test duration (e.g., 30s, 1m, 5m)')
+    .option('--ramp-up <duration>', 'Override ramp-up time (e.g., 10s, 1m)')
     .option('-g, --global <key=value>', 'Override global config (supports dot notation: browser.headless=false)', collectGlobals, [])
     .action(runCommand);
 
@@ -215,5 +220,15 @@ program
     .option('--host <host>', 'Host to bind to', 'localhost')
     .option('-d, --delay <ms>', 'Add delay to all responses (ms)', '0')
     .action(mockCommand);
+
+program
+    .command('dashboard')
+    .description('Start the dashboard web UI to view and compare test results')
+    .option('-p, --port <port>', 'Port to listen on', '3000')
+    .option('-r, --results <directory>', 'Results directory to scan', './results')
+    .option('-t, --tests <directory>', 'Tests directory (defaults to parent of results)')
+    .option('-w, --workers <file>', 'Workers configuration file (JSON) for distributed testing')
+    .option('--no-open', 'Do not open browser automatically')
+    .action(dashboardCommand);
 
 program.parse();

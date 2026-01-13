@@ -45,28 +45,46 @@ export class WorkerManager extends EventEmitter {
     const primaryPhase = getPrimaryLoadPhase(config.load);
     const totalVUs = primaryPhase.virtual_users || primaryPhase.vus || 1;
     const vusPerWorker = Math.ceil(totalVUs / this.workers.length);
-    
+
     logger.info(`🔄 Distributing ${totalVUs} VUs across ${this.workers.length} workers`);
 
     const promises = this.workers.map(async (worker, index) => {
       const workerVUs = Math.min(vusPerWorker, totalVUs - (index * vusPerWorker));
-      
+
       if (workerVUs <= 0) return;
-      
+
+      // Properly scale load config for this worker
+      const scaledLoad = this.scaleLoadConfig(config.load, workerVUs);
+
       const workerConfig = {
         ...config,
         name: `${config.name} - Worker ${index + 1}`,
-        load: {
-          ...config.load,
-          virtual_users: workerVUs
-        }
+        load: scaledLoad
       };
-      
+
       logger.debug(`🎯 Assigning ${workerVUs} VUs to worker ${worker.getAddress()}`);
       return worker.executeTest(workerConfig);
     });
 
     await Promise.all(promises);
+  }
+
+  private scaleLoadConfig(load: any, vus: number): any {
+    if (Array.isArray(load)) {
+      // Scale each phase in the array
+      return load.map(phase => ({
+        ...phase,
+        virtual_users: vus,
+        vus: vus
+      }));
+    } else {
+      // Single phase object
+      return {
+        ...load,
+        virtual_users: vus,
+        vus: vus
+      };
+    }
   }
 
   async waitForCompletion(): Promise<void> {
@@ -82,9 +100,24 @@ export class WorkerManager extends EventEmitter {
 
   async cleanup(): Promise<void> {
     logger.info('🧹 Cleaning up workers...');
+
+    // Remove all event listeners from workers before disconnecting
+    for (const worker of this.workers) {
+      worker.removeAllListeners();
+    }
+
+    // Disconnect all workers
     const promises = this.workers.map(worker => worker.disconnect());
     await Promise.all(promises);
     this.workers = [];
+
+    // Finalize metrics to clear any timers
+    await this.aggregatedMetrics.finalize();
+
+    // Remove our own listeners
+    this.removeAllListeners();
+
+    logger.info('✅ Cleanup completed');
   }
 
   getWorkerCount(): number {

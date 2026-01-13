@@ -364,22 +364,34 @@ export class VerificationMetricsCollector {
       success = true;
     } catch (error: any) {
       error_message = error.message;
-      throw error;
-    } finally {
-      // Round to 1 decimal place for cleaner output
+      // Calculate duration and metrics before re-throwing
       const duration = Math.round((performance.now() - startTime) * 10) / 10;
-
       const metrics: VerificationStepMetrics = {
         step_name: stepName,
         step_type: stepType,
         duration,
-        success,
+        success: false,
         error_message,
         ...additionalMetrics
       };
-
-      return { result: result!, metrics };
+      // Attach metrics to error so caller can access them
+      (error as any).verificationMetrics = metrics;
+      throw error;
     }
+
+    // Round to 1 decimal place for cleaner output
+    const duration = Math.round((performance.now() - startTime) * 10) / 10;
+
+    const metrics: VerificationStepMetrics = {
+      step_name: stepName,
+      step_type: stepType,
+      duration,
+      success,
+      error_message,
+      ...additionalMetrics
+    };
+
+    return { result: result!, metrics };
   }
 
   static generateVerificationThresholds(metrics: VerificationStepMetrics[]): Array<{

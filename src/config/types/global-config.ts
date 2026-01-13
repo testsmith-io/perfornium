@@ -67,6 +67,7 @@ export interface HighlightConfig {
 }
 
 export interface DebugConfig {
+  // Internal names
   capture_request_headers?: boolean;
   capture_request_body?: boolean;
   capture_response_headers?: boolean;
@@ -74,4 +75,11 @@ export interface DebugConfig {
   max_response_body_size?: number;
   capture_only_failures?: boolean;
   log_level?: 'debug' | 'info' | 'warn' | 'error';
+
+  // User-friendly aliases
+  log_requests?: boolean;   // Logs all HTTP requests
+  log_responses?: boolean;  // Logs all HTTP responses
+  log_headers?: boolean;    // Include headers in logs
+  log_body?: boolean;       // Include request/response body in logs
+  log_timings?: boolean;    // Log timing information
 }

@@ -272,6 +272,29 @@ export class WebHandler implements ProtocolHandler {
       ];
       const shouldRecord = measurableCommands.includes(action.command);
 
+      // Check if verification took too long (>= 95% of timeout = effective timeout)
+      // If it completed right at the timeout boundary, treat it as a timeout failure
+      const timeout = action.timeout || 30000;
+      const timeoutThreshold = timeout * 0.95; // 95% of timeout
+      const isEffectiveTimeout = responseTime && responseTime >= timeoutThreshold && measurableCommands.includes(action.command);
+
+      if (isEffectiveTimeout) {
+        return {
+          success: false,
+          error: `Verification timeout: took ${responseTime}ms (>= ${timeoutThreshold}ms threshold)`,
+          shouldRecord: true,
+          response_time: responseTime,
+          custom_metrics: {
+            page_url: page.url(),
+            page_title: await page.title(),
+            vu_id: context.vu_id,
+            command: action.command,
+            timeout_threshold: timeoutThreshold,
+            verification_metrics: verificationMetrics
+          }
+        };
+      }
+
       const enhancedResult: ProtocolResult = {
         success: true,
         data: result,
@@ -294,14 +317,30 @@ export class WebHandler implements ProtocolHandler {
       return enhancedResult;
 
     } catch (error: any) {
+      // Only record errors for measurable commands (verifications/waits) in step statistics
+      // Non-measurable command errors (click, fill, etc.) still appear in the errors table
+      // via the error tracking in virtual-user.ts, but not in step performance statistics
+      const measurableCommands = [
+        'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
+        'wait_for_selector', 'wait_for_text',
+        'measure_web_vitals', 'performance_audit'
+      ];
+      const shouldRecordError = measurableCommands.includes(action.command);
+
+      // Get verification metrics from error if available (attached by measureVerificationStep)
+      const verificationMetrics = error.verificationMetrics;
+
       return {
         success: false,
         error: error.message,
-        shouldRecord: true,  // Record errors too for analysis
+        shouldRecord: shouldRecordError,
+        response_time: verificationMetrics?.duration,
         custom_metrics: {
           vu_id: context.vu_id,
+          command: action.command,
           error_type: error.constructor.name,
-          error_stack: error.stack?.split('\n').slice(0, 3).join('; ')
+          error_stack: error.stack?.split('\n').slice(0, 3).join('; '),
+          verification_metrics: verificationMetrics
         }
       };
     }

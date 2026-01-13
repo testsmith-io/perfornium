@@ -158,7 +158,10 @@ export class WorkerNode extends EventEmitter {
   async disconnect(): Promise<void> {
     this.isRunning = false;
     if (this.ws) {
-      this.ws.close();
+      // Remove all listeners to prevent memory leaks and allow process to exit
+      this.ws.removeAllListeners();
+      // Use terminate() for immediate close instead of close() which waits for graceful handshake
+      this.ws.terminate();
       this.ws = undefined;
     }
   }

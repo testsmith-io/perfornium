@@ -30,7 +30,8 @@ export class RESTHandler implements ProtocolHandler {
     timeout?: number,
     debugConfig?: DebugConfig
   ) {
-    this.debugConfig = debugConfig;
+    // Normalize debug config to support user-friendly aliases
+    this.debugConfig = this.normalizeDebugConfig(debugConfig);
 
     // Create custom HTTP agent with socket timing hooks
     const httpAgent = new http.Agent({
@@ -878,5 +879,38 @@ export class RESTHandler implements ProtocolHandler {
     const iteration = context.iteration || 1;
     const vuId = context.vu_id;
     return `${iteration}. ${stepName} ${vuId}-${iteration}`;
+  }
+
+  /**
+   * Normalize debug config to support user-friendly aliases
+   * Maps: log_requests, log_responses, log_headers, log_body, log_timings
+   * To internal names used by the handler
+   */
+  private normalizeDebugConfig(config?: DebugConfig): DebugConfig | undefined {
+    if (!config) return undefined;
+
+    const normalized: DebugConfig = { ...config };
+
+    // If any of the user-friendly log_* options are set, enable debug logging
+    const hasUserFriendlyOptions = config.log_requests || config.log_responses ||
+                                   config.log_headers || config.log_body || config.log_timings;
+
+    if (hasUserFriendlyOptions) {
+      // Set log level to debug to enable logging
+      normalized.log_level = normalized.log_level || 'debug';
+
+      // Map user-friendly names to internal names
+      if (config.log_headers) {
+        normalized.capture_request_headers = true;
+        normalized.capture_response_headers = true;
+      }
+
+      if (config.log_body) {
+        normalized.capture_request_body = true;
+        normalized.capture_response_body = true;
+      }
+    }
+
+    return normalized;
   }
 }
