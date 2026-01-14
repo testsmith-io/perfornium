@@ -372,9 +372,12 @@ export class DashboardServer {
     const body = await this.readBody(req);
     const { testPath, options } = JSON.parse(body);
 
+    // Normalize the test path to use native separators for the OS
+    const normalizedTestPath = path.normalize(testPath);
+
     const testId = `run-${Date.now()}`;
-    const testName = path.basename(testPath).replace(/\.(yml|yaml|json)$/, '');
-    const args = ['run', testPath];
+    const testName = path.basename(normalizedTestPath).replace(/\.(yml|yaml|json)$/, '');
+    const args = ['run', normalizedTestPath];
 
     if (options?.verbose) args.push('-v');
     if (options?.report) args.push('-r');
@@ -689,18 +692,22 @@ export class DashboardServer {
             const stat = await fs.stat(fullPath);
             const relativePath = path.relative(baseDir, fullPath);
 
-            // Detect test type from content or path
+            // Detect test type from content or path (use forward slashes for cross-platform matching)
+            const normalizedPath = fullPath.replace(/\\/g, '/');
             let testType: 'api' | 'web' | 'mixed' = 'api';
-            if (content.includes('protocol: web') || content.includes('playwright') || fullPath.includes('/web/')) {
+            if (content.includes('protocol: web') || content.includes('playwright') || normalizedPath.includes('/web/')) {
               testType = 'web';
-            } else if (content.includes('protocol: http') || content.includes('protocol: https') || fullPath.includes('/api/')) {
+            } else if (content.includes('protocol: http') || content.includes('protocol: https') || normalizedPath.includes('/api/')) {
               testType = 'api';
             }
 
+            // Normalize paths to forward slashes for cross-platform compatibility
+            const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+
             tests.push({
               name: entry.name.replace(/\.(yml|yaml|json)$/, ''),
-              path: fullPath,
-              relativePath,
+              path: fullPath,  // Keep native path for filesystem operations
+              relativePath: normalizedRelativePath,  // Use forward slashes for display/URLs
               type: testType,
               lastModified: stat.mtime.toISOString()
             });
