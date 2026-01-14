@@ -43,13 +43,23 @@ export interface FakerConfig {
 }
 
 export interface BrowserConfig {
-  type: 'chromium' | 'firefox' | 'webkit';
+  type: 'chromium' | 'firefox' | 'webkit' | 'msedge' | 'chrome';
   headless?: boolean;
   viewport?: { width: number; height: number };
   slow_mo?: number;
   base_url?: string;
   highlight?: boolean | HighlightConfig;
   clear_storage?: boolean | ClearStorageConfig;
+  /** Capture screenshot on test failure */
+  screenshot_on_failure?: boolean | ScreenshotConfig;
+}
+
+export interface ScreenshotConfig {
+  enabled: boolean;
+  /** Directory to save screenshots (default: 'screenshots') */
+  output_dir?: string;
+  /** Capture full page screenshot (default: true) */
+  full_page?: boolean;
 }
 
 export interface ClearStorageConfig {

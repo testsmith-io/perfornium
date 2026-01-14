@@ -90,6 +90,7 @@ program
     .option('-o, --output <file>', 'Output file for recorded scenario')
     .option('--viewport <viewport>', 'Browser viewport size (e.g., 1920x1080)')
     .option('--base-url <url>', 'Base URL to relativize recorded URLs')
+    .option('-b, --browser <browser>', 'Browser to use: chromium, chrome, msedge, firefox, webkit', 'chromium')
     .option('-f, --format <format>', 'Output format: yaml, json, or typescript', 'yaml')
     .action(async (url: string, options: any) => {
         // Auto-determine file extension if output not specified
@@ -107,7 +108,8 @@ program
             output: options.output,
             format: options.format,
             viewport: options.viewport,
-            baseUrl: options.baseUrl
+            baseUrl: options.baseUrl,
+            browser: options.browser
         });
     });
 
