@@ -581,7 +581,10 @@ export class StepExecutor {
           const Module = require('module');
           const tempModule = new Module(filePath);
           tempModule.filename = filePath;
-          tempModule.paths = Module._nodeModulePaths(path.dirname(filePath));
+          // Include both script dir and cwd node_modules for dependency resolution
+          const scriptPaths = Module._nodeModulePaths(path.dirname(filePath));
+          const cwdPaths = Module._nodeModulePaths(process.cwd());
+          tempModule.paths = [...new Set([...scriptPaths, ...cwdPaths])];
           tempModule._compile(result.code, filePath);
           module = tempModule.exports;
         } else {
