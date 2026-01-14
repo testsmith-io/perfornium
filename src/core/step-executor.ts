@@ -210,6 +210,7 @@ export class StepExecutor {
     let result: any;
 
     const stepType = step.type || 'rest';
+    logger.debug(`Step type detected: "${stepType}" for step: ${step.name}`);
 
     switch (stepType) {
       case 'rest':
@@ -553,6 +554,7 @@ export class StepExecutor {
   }
 
   private async executeScriptStep(step: any, context: VUContext): Promise<any> {
+    logger.info(`📜 Executing script step: file=${step.file}, function=${step.function}`);
     const { file, function: funcName, params, returns, timeout = 30000 } = step;
     const path = require('path');
     const fs = require('fs');
@@ -615,6 +617,8 @@ export class StepExecutor {
       const resultPromise = Promise.resolve(fn(execParams));
       const result = await Promise.race([resultPromise, timeoutPromise]);
 
+      logger.debug(`Script ${funcName} returned: ${JSON.stringify(result)}`);
+
       // Store return value if specified
       if (returns && result !== undefined) {
         context.extracted_data[returns] = result;
@@ -676,9 +680,10 @@ export class StepExecutor {
       ...context.variables,
       ...context.extracted_data
     };
-    
+
     logger.debug(`StepExecutor processing template for VU${context.vu_id} Iter${context.iteration}`);
-    logger.debug(`Context data: ${JSON.stringify(contextData)}`);
+    logger.debug(`Extracted data keys: ${Object.keys(context.extracted_data || {}).join(', ') || '(none)'}`);
+    logger.debug(`Context data keys at top level: ${Object.keys(contextData).join(', ')}`);
 
     const stepStr = JSON.stringify(step);
     logger.debug(`Original step JSON: ${stepStr}`);
@@ -762,33 +767,48 @@ export class StepExecutor {
   }
 
   private async extractData(
-    extractors: ExtractConfig[], 
-    result: any, 
+    extractors: ExtractConfig[],
+    result: any,
     context: VUContext
   ): Promise<void> {
     for (const extractor of extractors) {
       try {
         let value: any;
 
-        switch (extractor.type) {
-          case 'json_path':
-            value = this.getJsonPath(result.data, extractor.expression);
+        // Normalize type: accept both "jsonpath" and "json_path"
+        const extractType = (extractor.type || 'jsonpath').toLowerCase().replace('_', '');
+        // Normalize expression: accept both "path" and "expression"
+        const expression = (extractor as any).expression || (extractor as any).path;
+
+        switch (extractType) {
+          case 'jsonpath':
+            value = this.getJsonPath(result.data, expression);
             break;
           case 'regex':
-            const match = String(result.data).match(new RegExp(extractor.expression));
+            const match = String(result.data).match(new RegExp(expression));
             value = match ? (match[1] || match[0]) : null;
+            break;
+          case 'header':
+            value = result.headers?.[expression.toLowerCase()];
             break;
           case 'custom':
             value = await this.extractCustom(extractor.script!, result, context);
             break;
+          default:
+            // Default to jsonpath if type not recognized but path/expression provided
+            if (expression) {
+              value = this.getJsonPath(result.data, expression);
+            }
         }
 
         if (value !== null && value !== undefined) {
           context.extracted_data[extractor.name] = value;
+          logger.debug(`Extracted ${extractor.name} = ${JSON.stringify(value)}`);
         } else if (extractor.default !== undefined) {
           context.extracted_data[extractor.name] = extractor.default;
         }
       } catch (error) {
+        logger.debug(`Extraction failed for ${extractor.name}: ${error}`);
         if (extractor.default !== undefined) {
           context.extracted_data[extractor.name] = extractor.default;
         }
