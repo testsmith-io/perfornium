@@ -11,6 +11,7 @@ export interface NativeRecorderOptions {
   viewport?: string;
   baseUrl?: string;
   device?: string;
+  browser?: 'chromium' | 'chrome' | 'msedge' | 'firefox' | 'webkit';
 }
 
 interface WaitPoint {
@@ -58,6 +59,17 @@ export async function startNativeRecording(url: string, options: NativeRecorderO
 
   // Build playwright codegen arguments
   const args = ['codegen', '--output', tempFile];
+  const browserType = options.browser || 'chromium';
+
+  // Add browser option - playwright codegen uses --browser for channel selection
+  if (browserType === 'msedge') {
+    args.push('--browser', 'chromium', '--channel', 'msedge');
+  } else if (browserType === 'chrome') {
+    args.push('--browser', 'chromium', '--channel', 'chrome');
+  } else if (browserType === 'firefox' || browserType === 'webkit') {
+    args.push('--browser', browserType);
+  }
+  // chromium is the default, no need to specify
 
   if (options.viewport) {
     const [width, height] = options.viewport.split('x');
@@ -192,7 +204,7 @@ export async function startNativeRecording(url: string, options: NativeRecorderO
 
   logger.info(`\nConverting recording to ${format.toUpperCase()} format...`);
 
-  const converter = new PlaywrightToPerfornium(playwrightCode, savedWaitPoints, url, options.baseUrl);
+  const converter = new PlaywrightToPerfornium(playwrightCode, savedWaitPoints, url, options.baseUrl, options.browser);
 
   switch (format) {
     case 'typescript':
@@ -242,10 +254,12 @@ class PlaywrightToPerfornium {
   private actions: ParsedAction[] = [];
   private waitPoints: WaitPoint[];
   private baseUrl: string;
+  private browserType: 'chromium' | 'chrome' | 'msedge' | 'firefox' | 'webkit';
 
-  constructor(playwrightCode: string, waitPoints: WaitPoint[], startUrl: string, baseUrl?: string) {
+  constructor(playwrightCode: string, waitPoints: WaitPoint[], startUrl: string, baseUrl?: string, browserType?: 'chromium' | 'chrome' | 'msedge' | 'firefox' | 'webkit') {
     this.waitPoints = waitPoints;
     this.baseUrl = baseUrl || new URL(startUrl).origin;
+    this.browserType = browserType || 'chromium';
     this.parsePlaywrightCode(playwrightCode);
   }
 
@@ -451,7 +465,7 @@ class PlaywrightToPerfornium {
       description: `Recorded on ${new Date().toISOString()} using Playwright codegen`,
       global: {
         base_url: this.baseUrl,
-        browser: { type: 'chromium', headless: false },
+        browser: { type: this.browserType, headless: false },
         think_time: '1-3'
       },
       load: {
@@ -503,7 +517,7 @@ class PlaywrightToPerfornium {
 
 const testConfig = test('Recorded Web Scenario')
   .baseUrl('${this.baseUrl}')
-  .withBrowser('chromium', {
+  .withBrowser('${this.browserType}', {
     headless: process.env.HEADLESS !== 'false',
     viewport: { width: 1920, height: 1080 }
   })

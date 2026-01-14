@@ -1055,7 +1055,10 @@ export class DashboardServer {
       <svg viewBox="0 0 128 128"><defs><linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#9c40ff"/></linearGradient><linearGradient id="lg2" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#9c40ff"/></linearGradient></defs><rect x="4" y="4" width="120" height="120" rx="24" fill="#0f0f23"/><rect x="32" y="28" width="12" height="72" rx="6" fill="url(#lg1)"/><path d="M 38 28 L 62 28 C 88 28 88 60 62 60 L 38 60" fill="none" stroke="url(#lg1)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><rect x="76" y="68" width="8" height="32" rx="4" fill="url(#lg2)" opacity="0.9"/><rect x="88" y="54" width="8" height="46" rx="4" fill="url(#lg1)" opacity="0.9"/></svg>
       Perfornium Dashboard
     </div>
-    <div id="connectionStatus"></div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div id="workersStatus"></div>
+      <div id="connectionStatus"></div>
+    </div>
   </div>
 
   <div class="container">
@@ -1166,8 +1169,8 @@ export class DashboardServer {
     function initWebSocket() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(protocol + '//' + location.host);
-      ws.onopen = () => { document.getElementById('connectionStatus').innerHTML = '<span class="live-badge">Connected</span>'; };
-      ws.onclose = () => { document.getElementById('connectionStatus').innerHTML = ''; setTimeout(initWebSocket, 3000); };
+      ws.onopen = () => { document.getElementById('connectionStatus').innerHTML = '<span class="live-badge">Dashboard</span>'; };
+      ws.onclose = () => { document.getElementById('connectionStatus').innerHTML = '<span style="color: var(--text-secondary); font-size: 12px;">Reconnecting...</span>'; setTimeout(initWebSocket, 3000); };
       ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
     }
 
@@ -1196,10 +1199,17 @@ export class DashboardServer {
         workersData = await res.json();
         const section = document.getElementById('workersSection');
         const info = document.getElementById('workersInfo');
+        const headerStatus = document.getElementById('workersStatus');
         if (workersData.available && workersData.workers.length > 0) {
           section.style.display = 'block';
           const totalCapacity = workersData.workers.reduce((sum, w) => sum + (w.capacity || 0), 0);
-          info.textContent = '(' + workersData.workers.length + ' workers, ' + totalCapacity + ' total capacity)';
+          const workerCount = workersData.workers.length;
+          info.textContent = '(' + workerCount + ' workers, ' + totalCapacity + ' total capacity)';
+          // Show workers info in header
+          const workerNames = workersData.workers.map(w => w.name || (w.host + ':' + w.port)).join(', ');
+          headerStatus.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: linear-gradient(135deg, #9c40ff 0%, #00d4ff 100%); border-radius: 20px; font-size: 12px; color: white; font-weight: 500; cursor: help;" title="' + workerNames + '"><span style="width: 8px; height: 8px; background: white; border-radius: 50%; animation: pulse 1.5s infinite;"></span>' + workerCount + ' Worker' + (workerCount > 1 ? 's' : '') + '</span>';
+        } else {
+          headerStatus.innerHTML = '';
         }
       } catch (e) { console.error('Failed to load workers:', e); }
     }

@@ -109,7 +109,7 @@ Values are automatically converted to the appropriate type:
 | `base_url`                 | Base URL for all requests                            |
 | `timeout`                  | Default timeout in milliseconds                      |
 | `think_time`               | Think time between steps (e.g., `1s`, `500ms`)       |
-| `browser.type`             | Browser type: `chromium`, `firefox`, `webkit`        |
+| `browser.type`             | Browser type: `chromium`, `chrome`, `msedge`, `firefox`, `webkit` |
 | `browser.headless`         | Run browser in headless mode (`true`/`false`)        |
 | `browser.highlight`        | Highlight elements before interaction                |
 | `browser.clear_storage`    | Clear browser storage at start                       |
@@ -243,12 +243,13 @@ perfornium record <url> [options]
 
 **Options**
 
-| Option                  |                 Default | Description                                         |
-| ----------------------- | ----------------------: | --------------------------------------------------- |
-| `-o, --output <file>`   | `recorded-scenario.yml` | Output file for the recorded scenario.              |
-| `-f, --format <format>` |                  `yaml` | Output format: `yaml`, `json`, or `typescript`.     |
-| `--viewport <viewport>` |                       — | Browser viewport size (e.g., `1920x1080`).          |
-| `--base-url <url>`      |                       — | Base URL to relativize recorded URLs.               |
+| Option                    |                 Default | Description                                         |
+| ------------------------- | ----------------------: | --------------------------------------------------- |
+| `-o, --output <file>`     | `recorded-scenario.yml` | Output file for the recorded scenario.              |
+| `-f, --format <format>`   |                  `yaml` | Output format: `yaml`, `json`, or `typescript`.     |
+| `-b, --browser <browser>` |              `chromium` | Browser to use: `chromium`, `chrome`, `msedge`, `firefox`, `webkit`. |
+| `--viewport <viewport>`   |                       — | Browser viewport size (e.g., `1920x1080`).          |
+| `--base-url <url>`        |                       — | Base URL to relativize recorded URLs.               |
 
 **Wait Points**
 
@@ -267,6 +268,15 @@ perfornium record https://myapp.com -f typescript -o tests/user-flow.spec.ts
 
 # Record to JSON format
 perfornium record https://api.example.com -f json -o tests/flow.json
+
+# Record using Microsoft Edge
+perfornium record https://example.com -b msedge -o tests/edge-flow.yml
+
+# Record using Google Chrome
+perfornium record https://example.com -b chrome -o tests/chrome-flow.yml
+
+# Record using Firefox
+perfornium record https://example.com -b firefox -o tests/firefox-flow.yml
 ```
 
 ---

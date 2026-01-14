@@ -311,7 +311,8 @@ export class TestRunner {
         viewport: browserConfig.viewport,
         slow_mo: browserConfig.slow_mo,
         highlight: browserConfig.highlight,
-        clear_storage: browserConfig.clear_storage
+        clear_storage: browserConfig.clear_storage,
+        screenshot_on_failure: browserConfig.screenshot_on_failure
       };
       const handler = new WebHandler(webConfig as any);
       await handler.initialize();

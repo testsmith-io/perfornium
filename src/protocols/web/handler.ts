@@ -1,7 +1,9 @@
 import { Browser, BrowserContext, Page, chromium, firefox, webkit } from 'playwright';
 import { ProtocolHandler, ProtocolResult } from '../base';
-import { VUContext, WebAction, BrowserConfig, HighlightConfig, ClearStorageConfig } from '../../config';
+import { VUContext, WebAction, BrowserConfig, HighlightConfig, ClearStorageConfig, ScreenshotConfig } from '../../config';
 import { logger } from '../../utils/logger';
+import * as path from 'path';
+import * as fs from 'fs';
 import { 
   CoreWebVitalsCollector, 
   VerificationMetricsCollector, 
@@ -330,6 +332,22 @@ export class WebHandler implements ProtocolHandler {
       // Get verification metrics from error if available (attached by measureVerificationStep)
       const verificationMetrics = error.verificationMetrics;
 
+      // Capture screenshot on failure if enabled
+      let screenshotPath: string | undefined;
+      if (this.config.screenshot_on_failure) {
+        logger.debug(`Screenshot on failure enabled, attempting capture for VU ${context.vu_id}`);
+        try {
+          const page = this.pages.get(context.vu_id);
+          if (page && !page.isClosed()) {
+            screenshotPath = await this.captureFailureScreenshot(page, context.vu_id, action.command);
+          } else {
+            logger.warn(`Cannot capture screenshot: page is ${page ? 'closed' : 'not found'} for VU ${context.vu_id}`);
+          }
+        } catch (screenshotError: any) {
+          logger.warn(`Failed to capture failure screenshot: ${screenshotError.message}`);
+        }
+      }
+
       return {
         success: false,
         error: error.message,
@@ -340,7 +358,8 @@ export class WebHandler implements ProtocolHandler {
           command: action.command,
           error_type: error.constructor.name,
           error_stack: error.stack?.split('\n').slice(0, 3).join('; '),
-          verification_metrics: verificationMetrics
+          verification_metrics: verificationMetrics,
+          screenshot: screenshotPath
         }
       };
     }
@@ -631,6 +650,12 @@ export class WebHandler implements ProtocolHandler {
         case 'chromium':
           browser = await chromium.launch(launchOptions);
           break;
+        case 'chrome':
+          browser = await chromium.launch({ ...launchOptions, channel: 'chrome' });
+          break;
+        case 'msedge':
+          browser = await chromium.launch({ ...launchOptions, channel: 'msedge' });
+          break;
         case 'firefox':
           browser = await firefox.launch(launchOptions);
           break;
@@ -638,7 +663,7 @@ export class WebHandler implements ProtocolHandler {
           browser = await webkit.launch(launchOptions);
           break;
         default:
-          throw new Error(`Unsupported browser type: ${browserType}`);
+          throw new Error(`Unsupported browser type: ${browserType}. Supported: chromium, chrome, msedge, firefox, webkit`);
       }
 
       logger.debug(`VU ${vuId}: Launched enhanced ${browserType} browser with Web Vitals support`);
@@ -901,5 +926,41 @@ export class WebHandler implements ProtocolHandler {
       // Don't fail the test if highlighting fails
       logger.debug(`Failed to highlight element ${selector}:`, error);
     }
+  }
+
+  /**
+   * Capture a screenshot when a test step fails
+   */
+  private async captureFailureScreenshot(page: Page, vuId: number, command: string): Promise<string> {
+    const screenshotConfig = this.config.screenshot_on_failure;
+
+    // Parse config - can be boolean or ScreenshotConfig object
+    let outputDir = 'screenshots';
+    let fullPage = true;
+
+    if (typeof screenshotConfig === 'object') {
+      outputDir = screenshotConfig.output_dir || 'screenshots';
+      fullPage = screenshotConfig.full_page !== false;
+    }
+
+    // Ensure directory exists
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // Generate unique filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const sanitizedCommand = command.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `failure_vu${vuId}_${sanitizedCommand}_${timestamp}.png`;
+    const screenshotPath = path.join(outputDir, filename);
+
+    // Capture the screenshot
+    await page.screenshot({
+      path: screenshotPath,
+      fullPage
+    });
+
+    logger.info(`📸 Screenshot captured: ${screenshotPath}`);
+    return screenshotPath;
   }
 }

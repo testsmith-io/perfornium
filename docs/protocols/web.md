@@ -92,6 +92,16 @@ const config = test('Login Form')
 
 ### Browser Selection
 
+Perfornium supports multiple browser engines via Playwright:
+
+| Browser Type | Description |
+|-------------|-------------|
+| `chromium` | Chromium browser (default) |
+| `chrome` | Google Chrome (requires Chrome installed) |
+| `msedge` | Microsoft Edge (requires Edge installed) |
+| `firefox` | Mozilla Firefox |
+| `webkit` | WebKit (Safari engine) |
+
 <!-- tabs:start -->
 
 #### **YAML**
@@ -99,7 +109,7 @@ const config = test('Login Form')
 ```yaml
 global:
   browser:
-    type: "chromium"  # chromium, firefox, webkit
+    type: "chromium"  # chromium, chrome, msedge, firefox, webkit
     headless: true
     viewport:
       width: 1280
@@ -113,7 +123,7 @@ global:
 import { test } from '@testsmith/perfornium/dsl';
 
 const config = test('Browser Configuration')
-  .withBrowser('chromium', {
+  .withBrowser('chromium', {  // or 'chrome', 'msedge', 'firefox', 'webkit'
     headless: true,
     viewport: { width: 1280, height: 720 },
     userAgent: 'Mozilla/5.0 (compatible; Perfornium/1.0)'
@@ -835,6 +845,43 @@ steps:
 
 ## Error Handling and Debugging
 
+### Screenshot on Failure
+
+Automatically capture screenshots when a web test step fails. This is invaluable for debugging test failures.
+
+```yaml
+global:
+  browser:
+    type: chromium
+    headless: true
+    # Simple: enable with defaults (saves to ./screenshots/)
+    screenshot_on_failure: true
+```
+
+Or with custom configuration:
+
+```yaml
+global:
+  browser:
+    type: chromium
+    headless: true
+    # Advanced: custom screenshot settings
+    screenshot_on_failure:
+      enabled: true
+      output_dir: "results/failure-screenshots"  # Custom directory
+      full_page: true                            # Capture full page (default: true)
+```
+
+Screenshots are saved with descriptive filenames:
+```
+screenshots/failure_vu1_verify_visible_2025-01-14T10-30-45-123Z.png
+```
+
+You can also enable via CLI:
+```bash
+perfornium run tests/web.yml -g browser.screenshot_on_failure=true
+```
+
 ### Error Recovery
 
 ```yaml
@@ -855,22 +902,15 @@ steps:
 ```yaml
 global:
   browser:
-    debug:
-      slow_mo: 100  # ms delay between actions
-      devtools: true
-      console_logs: true
-      network_logs: true
-      
+    slow_mo: 100  # ms delay between actions
+    screenshot_on_failure: true
+
 steps:
   - name: "Debug Action"
     type: "web"
     action:
       command: "click"
       selector: "#debug-button"
-    debug:
-      screenshot_on_failure: true
-      full_page_screenshot: true
-      console_log_level: "verbose"
 ```
 
 ## Best Practices
