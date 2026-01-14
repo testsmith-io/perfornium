@@ -1228,16 +1228,22 @@ export class DashboardServer {
         container.innerHTML = '<div class="empty-state"><h3>No tests found</h3><p>Add test files to your tests/ folder</p></div>';
         return;
       }
-      container.innerHTML = testFiles.map(t => \`
+      container.innerHTML = testFiles.map((t, idx) => \`
         <div class="test-item">
           <div class="test-info">
             <div class="test-name">\${t.name}</div>
             <div class="test-path">\${t.relativePath}</div>
           </div>
           <span class="test-type \${t.type}">\${t.type}</span>
-          <button class="btn btn-primary btn-sm" style="margin-left: 12px;" onclick="runTest('\${t.path}')" \${runningTestId ? 'disabled' : ''}>Run</button>
+          <button class="btn btn-primary btn-sm" style="margin-left: 12px;" onclick="runTestByIndex(\${idx})" \${runningTestId ? 'disabled' : ''}>Run</button>
         </div>
       \`).join('');
+    }
+
+    function runTestByIndex(idx) {
+      if (idx >= 0 && idx < testFiles.length) {
+        runTest(testFiles[idx].path);
+      }
     }
 
     async function runTest(testPath) {
