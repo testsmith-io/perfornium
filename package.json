@@ -1,6 +1,6 @@
 {
   "name": "@testsmith/perfornium",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Flexible performance testing framework for REST, SOAP, and web applications",
   "author": "TestSmith",
   "license": "MIT",

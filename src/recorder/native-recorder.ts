@@ -335,7 +335,8 @@ class PlaywrightToPerfornium {
       case 'getByText':
         return `text=${this.extractFirstArg(args)}`;
       case 'getByLabel':
-        return `label=${this.extractFirstArg(args)}`;
+        // Use text= instead of label= since getByLabel often matches non-label elements
+        return `text=${this.extractFirstArg(args)}`;
       case 'getByPlaceholder':
         return `placeholder=${this.extractFirstArg(args)}`;
       case 'getByTestId':
