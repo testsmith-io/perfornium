@@ -1,6 +1,6 @@
-import { CSVDataConfig } from '../../core/csv-data-provider';
 import { Step } from './step-types';
 import { ScenarioHooks, LoopHooks } from './hooks';
+import { GlobalCSVConfig } from './global-config';
 
 export interface Scenario {
   name: string;
@@ -17,7 +17,7 @@ export interface Scenario {
   steps: Step[];
 
   // Optional CSV support - these properties are completely optional
-  csv_data?: CSVDataConfig;
+  csv_data?: GlobalCSVConfig;
   csv_mode?: 'next' | 'unique' | 'random';
 
   // Conditional execution

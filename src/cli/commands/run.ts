@@ -321,15 +321,18 @@ export async function runCommand(
       process.exit(0);
     } else {
       const runner = new TestRunner(processedConfig);
-      
+
       // Set up graceful shutdown
       process.on('SIGINT', async () => {
         logger.info('Received SIGINT, stopping test...');
         await runner.stop();
         process.exit(0);
       });
-      
+
       await runner.run();
+
+      // Force exit to ensure process terminates (timers may still be active)
+      process.exit(0);
     }
 
   } catch (error: any) {

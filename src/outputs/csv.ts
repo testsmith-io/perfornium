@@ -53,7 +53,11 @@ export class CSVOutput implements OutputHandler {
         { id: 'verification_step_name', title: 'verification_step_name' },
         // Page info
         { id: 'page_url', title: 'page_url' },
-        { id: 'page_title', title: 'page_title' }
+        { id: 'page_title', title: 'page_title' },
+        // Network capture metrics
+        { id: 'network_call_count', title: 'network_call_count' },
+        { id: 'network_avg_duration', title: 'network_avg_duration_ms' },
+        { id: 'network_total_size', title: 'network_total_size_bytes' }
       ]
     });
   }
@@ -99,8 +103,23 @@ export class CSVOutput implements OutputHandler {
       verification_step_name: result.custom_metrics?.verification?.step_name || null,
       // Page info
       page_url: result.custom_metrics?.page_url || null,
-      page_title: result.custom_metrics?.page_title || null
+      page_title: result.custom_metrics?.page_title || null,
+      // Network capture metrics
+      network_call_count: result.custom_metrics?.network_call_count || null,
+      network_avg_duration: this.calculateNetworkAvgDuration(result.custom_metrics?.network_calls),
+      network_total_size: this.calculateNetworkTotalSize(result.custom_metrics?.network_calls)
     };
+  }
+
+  private calculateNetworkAvgDuration(networkCalls: any[] | undefined): number | null {
+    if (!networkCalls || networkCalls.length === 0) return null;
+    const totalDuration = networkCalls.reduce((sum, call) => sum + (call.duration || 0), 0);
+    return Math.round(totalDuration / networkCalls.length);
+  }
+
+  private calculateNetworkTotalSize(networkCalls: any[] | undefined): number | null {
+    if (!networkCalls || networkCalls.length === 0) return null;
+    return networkCalls.reduce((sum, call) => sum + (call.response_size || 0), 0);
   }
 
   async writeSummary(summary: MetricsSummary): Promise<void> {

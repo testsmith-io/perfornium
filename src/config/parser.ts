@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ReportConfig, TestConfiguration } from './types';
 import { TemplateProcessor } from '../utils/template';
-import { CSVDataProvider } from '../core';
+import { DataProvider } from '../core/data';
 import { logger } from '../utils/logger';
 
 export class ConfigParser {
@@ -271,7 +271,7 @@ export class ConfigParser {
     const hasTemplates = configStr.includes('{{template:') || configStr.includes('{{csv:');
 
     if (hasCSVScenarios || hasTemplates) {
-      CSVDataProvider.setBaseDir(baseDir);
+      DataProvider.setBaseDir(baseDir);
       TemplateProcessor.setBaseDir(baseDir);
       logger.debug(`Set base directory for CSV/templates: ${baseDir}`);
     }

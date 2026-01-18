@@ -98,8 +98,8 @@ export async function distributedCommand(
     // Generate report if requested
     if (options.report || testConfig.report?.generate) {
       try {
-        const { EnhancedHTMLReportGenerator } = await import('../../reporting/enhanced-html-generator');
-        const generator = new EnhancedHTMLReportGenerator();
+        const { HTMLReportGenerator } = await import('../../reporting/html-generator');
+        const generator = new HTMLReportGenerator();
         
         const timestamp = TimestampHelper.getTimestamp('file');
         const reportFilename = `distributed-report-${timestamp}.html`;

@@ -25,6 +25,7 @@
 - **Virtual Users**
   - [VU Management](virtual-users/management.md)
   - [CSV Data Injection](virtual-users/csv-data.md)
+  - [Data Policies](virtual-users/data-policies.md)
   - [Variables & Templating](virtual-users/variables.md)
 
 - **Features**
@@ -34,6 +35,7 @@
   - [Performance Thresholds](features/thresholds.md)
   - [Think Time](features/think-time.md)
   - [Default Headers](features/default-headers.md)
+  - [Network Capture](features/network-capture.md)
 
 - **Outputs & Reporting**
   - [Real-time Metrics](outputs/realtime.md)

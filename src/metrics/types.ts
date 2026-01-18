@@ -136,6 +136,19 @@ export interface TimelineData {
   avg_response_time: number;
   success_rate: number;
   throughput: number;
+  // Enhanced metrics for charts
+  error_count: number;
+  p50_response_time: number;
+  p90_response_time: number;
+  p95_response_time: number;
+  p99_response_time: number;
+  min_response_time: number;
+  max_response_time: number;
+  bytes_sent: number;
+  bytes_received: number;
+  connect_time_avg: number;
+  latency_avg: number;
+  status_codes: Record<number, number>;
 }
 
 export interface ErrorDetail {
@@ -148,4 +161,51 @@ export interface ErrorDetail {
   request_url?: string;
   response_body?: string;
   count: number;
+}
+
+export interface CapturedNetworkCall {
+  /** Unique request ID */
+  id: string;
+  /** Virtual user ID */
+  vu_id: number;
+  /** Timestamp when request was initiated */
+  timestamp: number;
+  /** Full request URL */
+  request_url: string;
+  /** HTTP method (GET, POST, etc.) */
+  request_method: string;
+  /** Request headers */
+  request_headers?: Record<string, string>;
+  /** Request body (may be truncated) */
+  request_body?: string;
+  /** Whether request body was truncated */
+  request_body_truncated?: boolean;
+  /** HTTP response status code */
+  response_status?: number;
+  /** HTTP response status text */
+  response_status_text?: string;
+  /** Response headers */
+  response_headers?: Record<string, string>;
+  /** Response body (may be truncated) */
+  response_body?: string;
+  /** Whether response body was truncated */
+  response_body_truncated?: boolean;
+  /** Response size in bytes */
+  response_size?: number;
+  /** Request start time (high-resolution) */
+  start_time: number;
+  /** Response end time (high-resolution) */
+  end_time?: number;
+  /** Total duration in ms */
+  duration?: number;
+  /** Resource type (document, xhr, fetch, script, etc.) */
+  resource_type?: string;
+  /** Whether the request succeeded (2xx/3xx status) */
+  success: boolean;
+  /** Error message if request failed */
+  error?: string;
+  /** Associated scenario name */
+  scenario?: string;
+  /** Associated step name */
+  step_name?: string;
 }

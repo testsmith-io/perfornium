@@ -42,7 +42,7 @@ export interface HTMLReportData {
   };
 }
 
-export class EnhancedHTMLReportGenerator {
+export class HTMLReportGenerator {
   private config: HTMLReportConfig;
   private templateCache: Map<string, HandlebarsTemplateDelegate> = new Map();
 
@@ -218,7 +218,11 @@ export class EnhancedHTMLReportGenerator {
 
   private prepareReportData(data: HTMLReportData): any {
     const now = Date.now();
-    const startTime = data.metadata?.test_start ? new Date(data.metadata.test_start).getTime() : now - 60000;
+
+    // Use total_duration from summary (in milliseconds), convert to seconds
+    const durationSeconds = data.summary?.total_duration
+      ? data.summary.total_duration / 1000
+      : (data.metadata?.test_start ? (now - new Date(data.metadata.test_start).getTime()) / 1000 : 0);
 
     // Calculate enhanced statistics if results are available
     const enhancedSummary = { ...data.summary };
@@ -304,7 +308,7 @@ export class EnhancedHTMLReportGenerator {
       metadata: {
         generated_at: new Date().toISOString(),
         generated_by: 'Perfornium Enhanced HTML Generator',
-        test_duration: this.formatDuration(now - startTime),
+        test_duration: this.formatDuration(durationSeconds * 1000),
         ...data.metadata
       },
       charts,
@@ -330,7 +334,7 @@ export class EnhancedHTMLReportGenerator {
       heatmapDataJson: JSON.stringify(heatmapData),
       performanceTrendsData: JSON.stringify(performanceTrends),
 
-      // Template-specific data variables (for compatibility with enhanced-report.hbs)
+      // Template-specific data variables (for compatibility with report.hbs)
       generatedAt, // Human-readable date for template header
       summaryData: JSON.stringify(enhancedSummary),
       stepStatistics: enhancedSummary.step_statistics || [], // Direct array for {{#each}} iteration
@@ -967,7 +971,7 @@ export class EnhancedHTMLReportGenerator {
   }
 
   private getDefaultTemplatePath(): string {
-    return path.join(__dirname, '../reporting/templates/enhanced-report.hbs');
+    return path.join(__dirname, '../reporting/templates/report.hbs');
   }
 
   // NOTE: calculateStepStatistics has been removed - using StatisticsCalculator.calculateDetailedStepStatistics instead

@@ -81,7 +81,11 @@ export class JSONOutput implements OutputHandler {
     // Close root object
     this.fileStream.write('\n}\n');
 
-    // Close file stream
-    this.fileStream.end();
+    // Close file stream and wait for it to finish
+    return new Promise((resolve, reject) => {
+      this.fileStream!.on('finish', resolve);
+      this.fileStream!.on('error', reject);
+      this.fileStream!.end();
+    });
   }
 }
