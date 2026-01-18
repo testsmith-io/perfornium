@@ -1,3 +1,5 @@
+/* global Chart, document, window, location, WebSocket, setTimeout, setInterval, clearInterval, fetch, console, confirm, alert, URL, URLSearchParams, requestAnimationFrame */
+
 // State
 let ws, liveTests = {}, results = [], testFiles = [], selectedForCompare = new Set(), charts = {}, runningTestId = null, workersData = null, infraMetrics = {};
 
@@ -487,14 +489,6 @@ function renderInfrastructure() {
   hosts.forEach(host => updateInfraHostMetrics(host));
 }
 
-function formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
 function formatBytesPerSec(bytesPerSec) {
   if (!bytesPerSec || bytesPerSec === 0) return '0 B/s';
   const k = 1024;
@@ -829,7 +823,7 @@ function renderLive() {
 
   running.forEach(test => {
     const history = test.history || [];
-    const startTime = test.startTime ? new Date(test.startTime).getTime() : (history.length > 0 ? history[0].timestamp : Date.now());
+    const _startTime = test.startTime ? new Date(test.startTime).getTime() : (history.length > 0 ? history[0].timestamp : Date.now()); // eslint-disable-line @typescript-eslint/no-unused-vars
     const labels = history.map(h => {
       const d = new Date(h.timestamp);
       const hh = d.getHours().toString().padStart(2, '0');
@@ -1249,8 +1243,6 @@ async function showDetail(id, skipHashUpdate = false) {
   window.currentDetailData = data;
 
   const stepStats = data.step_statistics || [];
-  const timelineData = data.timeline_data || [];
-  const vuRampup = data.vu_ramp_up || [];
 
   document.getElementById('detailContent').innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
@@ -1548,8 +1540,6 @@ async function showDetail(id, skipHashUpdate = false) {
       <h3 style="color: #9c40ff;">Test Infrastructure (Historical)</h3>
       <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 16px;">Server metrics captured during this test execution (${Object.keys(data.infrastructure_metrics).length} host(s))</p>
       ${Object.entries(data.infrastructure_metrics).map(([host, metrics]) => {
-        const latest = metrics[metrics.length - 1] || {};
-        const m = latest.metrics || {};
         const avgCpu = metrics.length > 0 ? (metrics.reduce((sum, x) => sum + (x.metrics?.cpu?.usage_percent || 0), 0) / metrics.length).toFixed(1) : '-';
         const avgMem = metrics.length > 0 ? (metrics.reduce((sum, x) => sum + (x.metrics?.memory?.usage_percent || 0), 0) / metrics.length).toFixed(1) : '-';
         const maxCpu = metrics.length > 0 ? Math.max(...metrics.map(x => x.metrics?.cpu?.usage_percent || 0)).toFixed(1) : '-';
@@ -1759,12 +1749,12 @@ async function showDetail(id, skipHashUpdate = false) {
 
   // Close modal on escape key
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeNetworkModal();
+    if (e.key === 'Escape') window.closeNetworkModal();
   });
 
   // Close modal on outside click
   document.getElementById('network-detail-modal')?.addEventListener('click', function(e) {
-    if (e.target === this) closeNetworkModal();
+    if (e.target === this) window.closeNetworkModal();
   });
 
   showPanel('detail');
@@ -2188,10 +2178,6 @@ async function showDetail(id, skipHashUpdate = false) {
       // 0. Scatter Chart - Each request as a dot over time
       const scatterCtx = document.getElementById('network-scatter-chart');
       if (scatterCtx) {
-        // Find the earliest timestamp to use as base
-        const timestamps = networkCalls.map(c => c.timestamp || c.start_time || 0).filter(t => t > 0);
-        const baseTime = timestamps.length > 0 ? Math.min(...timestamps) : 0;
-
         // Group by resource type for different colors
         const typeGroups = {};
         const failedPoints = [];
@@ -2364,7 +2350,7 @@ async function showDetail(id, skipHashUpdate = false) {
             if (!endpointStats[pathname]) endpointStats[pathname] = { total: 0, count: 0 };
             endpointStats[pathname].total += (c.duration || 0);
             endpointStats[pathname].count++;
-          } catch {}
+          } catch { /* ignore invalid URLs */ }
         });
 
         const endpoints = Object.entries(endpointStats)
@@ -2592,7 +2578,11 @@ function renderCompareSelect() {
 }
 
 function toggleCompare(id) {
-  selectedForCompare.has(id) ? selectedForCompare.delete(id) : selectedForCompare.add(id);
+  if (selectedForCompare.has(id)) {
+    selectedForCompare.delete(id);
+  } else {
+    selectedForCompare.add(id);
+  }
   document.getElementById('compareBtn').disabled = selectedForCompare.size < 2;
   renderCompareSelect();
 }
@@ -2631,7 +2621,7 @@ function renderComparison(data) {
               </tr>
             </thead>
             <tbody>
-              ${stepComparisons.map((step, stepIdx) => `
+              ${stepComparisons.map((step) => `
                 <tr>
                   <td><strong>${step.step_name}</strong></td>
                   ${step.results.map((r, i) => {
@@ -3275,3 +3265,16 @@ function closeChartModal() {
 function expandBtnHtml() {
   return '<button class="expand-btn" onclick="toggleChartExpand(this)" title="Toggle full width"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>';
 }
+
+// Export functions for onclick handlers
+window.runTestByIndex = runTestByIndex;
+window.stopTest = stopTest;
+window.deleteResult = deleteResult;
+window.toggleCompare = toggleCompare;
+window.exportInfraMetrics = exportInfraMetrics;
+window.importInfraMetrics = importInfraMetrics;
+window.exportAllInfra = exportAllInfra;
+window.exportResult = exportResult;
+window.importResult = importResult;
+window.handleImportFile = handleImportFile;
+window.toggleChartExpand = toggleChartExpand;
