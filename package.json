@@ -1,6 +1,6 @@
 {
   "name": "@testsmith/perfornium",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "Flexible performance testing framework for REST, SOAP, and web applications",
   "author": "TestSmith",
   "license": "MIT",
@@ -36,7 +36,7 @@
   },
   "scripts": {
     "build": "tsc && npm run copy-templates",
-    "copy-templates": "mkdir -p dist/reporting/templates && cp -r src/reporting/templates/* dist/reporting/templates/ 2>/dev/null || true",
+    "copy-templates": "mkdir -p dist/reporting/templates && cp -r src/reporting/templates/* dist/reporting/templates/ 2>/dev/null || true && mkdir -p dist/dashboard/templates/scripts && cp -r src/dashboard/templates/* dist/dashboard/templates/ 2>/dev/null || true",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "vitest",
@@ -69,6 +69,7 @@
   ],
   "dependencies": {
     "@faker-js/faker": "^9.9.0",
+    "@influxdata/influxdb-client": "^1.35.0",
     "@types/papaparse": "^5.3.16",
     "@xmldom/xmldom": "^0.8.11",
     "axios": "^1.6.0",
@@ -81,6 +82,7 @@
     "influx": "^5.10.0",
     "inquirer": "^12.9.4",
     "js-yaml": "^4.1.0",
+    "minimatch": "^10.1.1",
     "ora": "^8.2.0",
     "papaparse": "^5.5.3",
     "playwright": "^1.40.0",
@@ -92,6 +94,7 @@
     "@eslint/js": "^9.39.2",
     "@types/handlebars": "^4.1.0",
     "@types/js-yaml": "^4.0.9",
+    "@types/minimatch": "^5.1.2",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.18.1",
     "@types/xmldom": "^0.1.34",

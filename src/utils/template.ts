@@ -1,5 +1,6 @@
 import { FakerConfig } from '../config/types';
-import { CSVDataProvider, CSVDataConfig } from '../core/csv-data-provider';
+import { DataProvider } from '../core/data';
+import { GlobalCSVConfig } from '../config/types/global-config';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as Handlebars from 'handlebars';
@@ -386,7 +387,7 @@ export class TemplateProcessor {
     // Parse CSV specification: "file.csv" or "file.csv|mode=unique,column=email"
     const [csvFile, optionsSpec] = csvSpec.split('|');
     
-    const csvConfig: CSVDataConfig = {
+    const csvConfig: GlobalCSVConfig = {
       file: csvFile.trim(),
       cycleOnExhaustion: true // Default to cycle
     };
@@ -413,7 +414,7 @@ export class TemplateProcessor {
       }
     }
 
-    const csvProvider = CSVDataProvider.getInstance(csvConfig);
+    const csvProvider = DataProvider.getInstance(csvConfig);
     const vuId = context.vu_id || context.__VU || 1;
 
     // This returns a Promise, but we need sync processing for string replacement
@@ -424,7 +425,7 @@ export class TemplateProcessor {
   /**
    * Synchronous CSV data processing (cached approach)
    */
-  private processCSVDataSync(csvProvider: CSVDataProvider, mode: string, column: string | undefined, vuId: number): any {
+  private processCSVDataSync(csvProvider: DataProvider, mode: string, column: string | undefined, vuId: number): any {
     // For now, return a placeholder that will be resolved later
     // In a real implementation, you'd want to pre-load CSV data
     return `CSV_DATA_${vuId}_${mode}_${column || 'all'}`;

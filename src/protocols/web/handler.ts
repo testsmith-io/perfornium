@@ -1,31 +1,57 @@
-import { Browser, BrowserContext, Page, chromium, firefox, webkit } from 'playwright';
+import { Page } from 'playwright';
 import { ProtocolHandler, ProtocolResult } from '../base';
-import { VUContext, WebAction, BrowserConfig, HighlightConfig, ClearStorageConfig, ScreenshotConfig } from '../../config';
+import { VUContext, WebAction, BrowserConfig } from '../../config';
 import { logger } from '../../utils/logger';
-import * as path from 'path';
-import * as fs from 'fs';
-import { 
-  CoreWebVitalsCollector, 
-  VerificationMetricsCollector, 
-  WebPerformanceCollector,
-  CoreWebVitals,
-  VerificationStepMetrics,
-  WebPerformanceMetrics
+import {
+  CoreWebVitalsCollector,
+  VerificationMetricsCollector,
+  VerificationStepMetrics
 } from './core-web-vitals';
+import { CapturedNetworkCall } from '../../metrics/types';
+
+// Extracted modules
+import { BrowserManager, StorageManager, ElementHighlighter, ScreenshotCapture } from './browser';
+import { NetworkCaptureManager, NetworkCallCallback } from './network';
+import { NavigationCommands, InteractionCommands, VerificationCommands, MeasurementCommands } from './commands';
 
 export class WebHandler implements ProtocolHandler {
-  private browsers: Map<number, Browser> = new Map();
-  private contexts: Map<number, BrowserContext> = new Map();
-  private pages: Map<number, Page> = new Map();
-  private verificationMetrics: Map<number, VerificationStepMetrics[]> = new Map();
   private config: BrowserConfig;
+  private verificationMetrics: Map<number, VerificationStepMetrics[]> = new Map();
 
-  constructor(config: BrowserConfig) {
+  // Extracted managers
+  private browserManager: BrowserManager;
+  private networkManager: NetworkCaptureManager;
+  private storageManager: StorageManager;
+  private highlighter: ElementHighlighter;
+  private screenshotCapture: ScreenshotCapture;
+
+  // Command handlers
+  private navigationCommands: NavigationCommands;
+  private interactionCommands: InteractionCommands;
+  private verificationCommands: VerificationCommands;
+  private measurementCommands: MeasurementCommands;
+
+  constructor(config: BrowserConfig, onNetworkCall?: NetworkCallCallback) {
     this.config = {
       ...config,
       type: config.type || 'chromium',
       headless: config.headless !== undefined ? config.headless : true
     };
+
+    // Initialize managers
+    this.browserManager = new BrowserManager(this.config);
+    this.networkManager = new NetworkCaptureManager(onNetworkCall);
+    this.storageManager = new StorageManager();
+    this.highlighter = new ElementHighlighter(this.config.highlight);
+    this.screenshotCapture = new ScreenshotCapture(this.config.screenshot_on_failure);
+
+    // Initialize command handlers
+    this.navigationCommands = new NavigationCommands(this.config);
+    this.interactionCommands = new InteractionCommands(
+      (page, selector) => this.highlighter.highlightElement(page, selector)
+    );
+    this.verificationCommands = new VerificationCommands();
+    this.measurementCommands = new MeasurementCommands();
   }
 
   async initialize(): Promise<void> {
@@ -36,237 +62,158 @@ export class WebHandler implements ProtocolHandler {
     try {
       logger.info(`🎬 WebHandler.execute: command="${action.command}", selector="${action.selector || 'N/A'}", url="${action.url || 'N/A'}"`);
 
+      this.networkManager.updateContext(context.vu_id, {
+        scenario: (context as any).scenario,
+        step_name: action.name || action.command
+      });
+
       const page = await this.getPage(context.vu_id);
       let result: any;
       let verificationMetrics: VerificationStepMetrics | undefined;
-      let webVitals: CoreWebVitals | undefined;
-      let performanceMetrics: WebPerformanceMetrics | undefined;
+      let webVitals: any;
+      let performanceMetrics: any;
 
-      // Always inject Web Vitals collector for browser tests
       await CoreWebVitalsCollector.injectVitalsCollector(page);
 
       switch (action.command) {
         case 'goto':
-          {
-            const actionStart = Date.now();
-            result = await this.handleGoto(page, action);
-            result.action_time = Date.now() - actionStart;
-            // Collect Web Vitals after navigation (optional, doesn't affect action_time)
-            if (action.collectWebVitals !== false) {
-              webVitals = await CoreWebVitalsCollector.collectVitals(page, action.webVitalsWaitTime || 1000);
-            }
+          result = await this.executeWithTiming(
+            () => this.navigationCommands.handleGoto(page, action)
+          );
+          if (action.collectWebVitals !== false) {
+            webVitals = await CoreWebVitalsCollector.collectVitals(page, action.webVitalsWaitTime || 1000);
           }
           break;
 
         case 'click':
-          {
-            const actionStart = Date.now();
-            if (action.measureVerification) {
-              const measured = await VerificationMetricsCollector.measureVerificationStep(
-                action.verificationName || 'click_action',
-                'click',
-                () => this.handleClick(page, action),
-                { selector: action.selector }
-              );
-              result = measured.result;
-              verificationMetrics = measured.metrics;
-            } else {
-              result = await this.handleClick(page, action);
-            }
-            result.action_time = Date.now() - actionStart;
-            // Only collect Web Vitals if explicitly requested
-            if (action.collectWebVitals) {
-              webVitals = await CoreWebVitalsCollector.collectVitals(page, action.webVitalsWaitTime || 1000);
-            }
+          ({ result, verificationMetrics } = await this.executeInteractionWithMeasurement(
+            page, action, 'click',
+            () => this.interactionCommands.handleClick(page, action)
+          ));
+          if (action.collectWebVitals) {
+            webVitals = await CoreWebVitalsCollector.collectVitals(page, action.webVitalsWaitTime || 1000);
           }
           break;
 
         case 'fill':
-          {
-            const actionStart = Date.now();
-            if (action.measureVerification) {
-              const measured = await VerificationMetricsCollector.measureVerificationStep(
-                action.verificationName || 'fill_action',
-                'fill',
-                () => this.handleFill(page, action),
-                { selector: action.selector, expected_text: action.value as string }
-              );
-              result = measured.result;
-              verificationMetrics = measured.metrics;
-            } else {
-              result = await this.handleFill(page, action);
-            }
-            result.action_time = Date.now() - actionStart;
-            // Only collect Web Vitals if explicitly requested
-            if (action.collectWebVitals) {
-              webVitals = await CoreWebVitalsCollector.collectVitals(page, action.webVitalsWaitTime || 1000);
-            }
+          ({ result, verificationMetrics } = await this.executeInteractionWithMeasurement(
+            page, action, 'fill',
+            () => this.interactionCommands.handleFill(page, action)
+          ));
+          if (action.collectWebVitals) {
+            webVitals = await CoreWebVitalsCollector.collectVitals(page, action.webVitalsWaitTime || 1000);
           }
           break;
 
         case 'select':
-          {
-            const actionStart = Date.now();
-            result = await this.handleSelect(page, action);
-            result.action_time = Date.now() - actionStart;
-          }
+          result = await this.executeWithTiming(
+            () => this.interactionCommands.handleSelect(page, action)
+          );
           break;
 
         case 'press':
-          {
-            const actionStart = Date.now();
-            result = await this.handlePress(page, action);
-            result.action_time = Date.now() - actionStart;
-          }
+          result = await this.executeWithTiming(
+            () => this.interactionCommands.handlePress(page, action)
+          );
           break;
 
         case 'wait_for_selector':
-          {
-            const actionStart = Date.now();
-            if (action.measureVerification) {
-              const measured = await VerificationMetricsCollector.measureVerificationStep(
-                action.verificationName || 'wait_for_selector',
-                'wait',
-                () => this.handleWaitForSelector(page, action),
-                { selector: action.selector }
-              );
-              result = measured.result;
-              verificationMetrics = measured.metrics;
-            } else {
-              result = await this.handleWaitForSelector(page, action);
-            }
-            result.action_time = Date.now() - actionStart;
-          }
+          ({ result, verificationMetrics } = await this.executeVerificationWithMeasurement(
+            page, action, 'wait',
+            () => this.verificationCommands.handleWaitForSelector(page, action)
+          ));
           break;
 
         case 'verify_exists':
-          const measured = await VerificationMetricsCollector.measureVerificationStep(
-            action.verificationName || action.name || 'verify_exists',
-            'verification',
-            () => this.handleVerifyExists(page, action),
-            { selector: action.selector }
-          );
-          result = measured.result;
-          verificationMetrics = measured.metrics;
+          ({ result, verificationMetrics } = await this.executeVerification(
+            page, action, () => this.verificationCommands.handleVerifyExists(page, action)
+          ));
           break;
 
         case 'verify_visible':
-          const visibleMeasured = await VerificationMetricsCollector.measureVerificationStep(
-            action.verificationName || action.name || 'verify_visible',
-            'verification',
-            () => this.handleVerifyVisible(page, action),
-            { selector: action.selector }
-          );
-          result = visibleMeasured.result;
-          verificationMetrics = visibleMeasured.metrics;
+          ({ result, verificationMetrics } = await this.executeVerification(
+            page, action, () => this.verificationCommands.handleVerifyVisible(page, action)
+          ));
           break;
 
         case 'verify_text':
-          const textMeasured = await VerificationMetricsCollector.measureVerificationStep(
-            action.verificationName || action.name || 'verify_text',
-            'verification',
-            () => this.handleVerifyText(page, action),
-            { selector: action.selector, expected_text: action.expected_text }
-          );
-          result = textMeasured.result;
-          verificationMetrics = textMeasured.metrics;
+          ({ result, verificationMetrics } = await this.executeVerification(
+            page, action, () => this.verificationCommands.handleVerifyText(page, action)
+          ));
           break;
 
         case 'verify_contains':
-          const containsMeasured = await VerificationMetricsCollector.measureVerificationStep(
-            action.verificationName || action.name || 'verify_contains',
-            'verification',
-            () => this.handleVerifyContains(page, action),
-            { selector: action.selector, expected_text: action.value as string }
-          );
-          result = containsMeasured.result;
-          verificationMetrics = containsMeasured.metrics;
+          ({ result, verificationMetrics } = await this.executeVerification(
+            page, action, () => this.verificationCommands.handleVerifyContains(page, action)
+          ));
           break;
 
         case 'verify_not_exists':
-          const notExistsMeasured = await VerificationMetricsCollector.measureVerificationStep(
-            action.verificationName || action.name || 'verify_not_exists',
-            'verification',
-            () => this.handleVerifyNotExists(page, action),
-            { selector: action.selector }
-          );
-          result = notExistsMeasured.result;
-          verificationMetrics = notExistsMeasured.metrics;
+          ({ result, verificationMetrics } = await this.executeVerification(
+            page, action, () => this.verificationCommands.handleVerifyNotExists(page, action)
+          ));
           break;
 
         case 'measure_web_vitals':
-          webVitals = await CoreWebVitalsCollector.collectVitals(page, action.webVitalsWaitTime || 3000);
-          result = { web_vitals: webVitals };
+          result = await this.measurementCommands.handleMeasureWebVitals(page, action);
+          webVitals = result.web_vitals;
           break;
 
         case 'performance_audit':
-          performanceMetrics = await WebPerformanceCollector.collectAllMetrics(page, verificationMetrics);
-          result = { performance_audit: performanceMetrics };
+          result = await this.measurementCommands.handlePerformanceAudit(page, action, verificationMetrics);
+          performanceMetrics = result.performance_audit;
           break;
 
         case 'wait_for_load_state':
-          const waitUntil = action.waitUntil === 'commit' ? 'load' : (action.waitUntil || 'load');
-          await page.waitForLoadState(waitUntil as 'load' | 'domcontentloaded' | 'networkidle', { timeout: action.timeout || 30000 });
-          result = { load_state: waitUntil };
+          result = await this.navigationCommands.handleWaitForLoadState(page, action);
           break;
 
         case 'network_idle':
-          await page.waitForLoadState('networkidle', { timeout: action.networkIdleTimeout || 30000 });
-          result = { network_idle: true };
+          result = await this.navigationCommands.handleNetworkIdle(page, action);
           break;
 
         case 'dom_ready':
-          await page.waitForLoadState('domcontentloaded', { timeout: action.timeout || 30000 });
-          result = { dom_ready: true };
+          result = await this.navigationCommands.handleDomReady(page, action);
           break;
 
         case 'screenshot':
-          const screenshot = await page.screenshot({
-            type: 'png',
-            fullPage: action.options?.fullPage || false
-          });
-          result = { 
-            screenshot: screenshot.length,
-            screenshot_data: action.options?.includeData ? screenshot.toString('base64') : undefined
-          };
+          result = await this.measurementCommands.handleScreenshot(page, action);
           if (verificationMetrics) {
-            verificationMetrics.screenshot_size = screenshot.length;
+            verificationMetrics.screenshot_size = result.screenshot;
           }
           break;
 
+        case 'hover':
+          result = await this.interactionCommands.handleHover(page, action);
+          break;
+
+        case 'evaluate':
+          result = await this.interactionCommands.handleEvaluate(page, action);
+          break;
+
         default:
-          // Fall back to original handler methods for backward compatibility
-          result = await this.handleLegacyAction(page, action, context);
+          throw new Error(`Unsupported web action: ${action.command}`);
       }
 
-      // Store verification metrics for later analysis
+      // Store verification metrics
       if (verificationMetrics) {
         const vuMetrics = this.verificationMetrics.get(context.vu_id) || [];
         vuMetrics.push(verificationMetrics);
         this.verificationMetrics.set(context.vu_id, vuMetrics);
       }
 
-      // Evaluate Web Vitals if collected
+      // Evaluate Web Vitals
       let vitalsScore: 'good' | 'needs-improvement' | 'poor' | undefined;
       let vitalsDetails: any;
       if (webVitals) {
-        const evaluation = CoreWebVitalsCollector.evaluateVitals(
-          webVitals, 
-          action.webVitalsThresholds as any
-        );
+        const evaluation = this.measurementCommands.evaluateVitals(webVitals, action.webVitalsThresholds as any);
         vitalsScore = evaluation.score;
         vitalsDetails = evaluation.details;
       }
 
-      // Use action_time if available (actual action duration without web vitals collection)
-      // Or verification metrics duration for verify steps
       const responseTime = result?.action_time || verificationMetrics?.duration;
 
-      // Only record metrics for meaningful performance measurements:
-      // - Verifications (verify_*) - time for elements/text to appear (measures app responsiveness)
-      // - Waits (wait_for_*) - time for conditions to be met
-      // - Performance measurements (measure_*, performance_audit)
-      // NOT recorded: goto, click, fill, press, select, hover, screenshot (navigation/interactions)
+      // Check for measurable commands
       const measurableCommands = [
         'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
         'wait_for_selector', 'wait_for_text',
@@ -274,10 +221,9 @@ export class WebHandler implements ProtocolHandler {
       ];
       const shouldRecord = measurableCommands.includes(action.command);
 
-      // Check if verification took too long (>= 95% of timeout = effective timeout)
-      // If it completed right at the timeout boundary, treat it as a timeout failure
+      // Check for effective timeout
       const timeout = action.timeout || 30000;
-      const timeoutThreshold = timeout * 0.95; // 95% of timeout
+      const timeoutThreshold = timeout * 0.95;
       const isEffectiveTimeout = responseTime && responseTime >= timeoutThreshold && measurableCommands.includes(action.command);
 
       if (isEffectiveTimeout) {
@@ -297,10 +243,20 @@ export class WebHandler implements ProtocolHandler {
         };
       }
 
-      const enhancedResult: ProtocolResult = {
+      // Get captured network calls
+      const networkConfig = this.config.network_capture;
+      const capturedNetworkCalls = (networkConfig?.enabled && networkConfig?.store_inline !== false)
+        ? this.networkManager.getAndClearNetworkCalls(context.vu_id)
+        : undefined;
+
+      if (capturedNetworkCalls?.length) {
+        logger.info(`VU ${context.vu_id}: Captured ${capturedNetworkCalls.length} network calls for this step`);
+      }
+
+      return {
         success: true,
         data: result,
-        shouldRecord,  // Only record verifications and navigations for meaningful metrics
+        shouldRecord,
         response_time: responseTime,
         custom_metrics: {
           page_url: page.url(),
@@ -312,375 +268,155 @@ export class WebHandler implements ProtocolHandler {
           vitals_score: vitalsScore,
           vitals_details: vitalsDetails,
           verification_metrics: verificationMetrics,
-          performance_metrics: performanceMetrics
+          performance_metrics: performanceMetrics,
+          network_calls: capturedNetworkCalls?.length ? capturedNetworkCalls : undefined,
+          network_call_count: capturedNetworkCalls?.length || 0
         }
       };
-
-      return enhancedResult;
 
     } catch (error: any) {
-      // Only record errors for measurable commands (verifications/waits) in step statistics
-      // Non-measurable command errors (click, fill, etc.) still appear in the errors table
-      // via the error tracking in virtual-user.ts, but not in step performance statistics
-      const measurableCommands = [
-        'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
-        'wait_for_selector', 'wait_for_text',
-        'measure_web_vitals', 'performance_audit'
-      ];
-      const shouldRecordError = measurableCommands.includes(action.command);
-
-      // Get verification metrics from error if available (attached by measureVerificationStep)
-      const verificationMetrics = error.verificationMetrics;
-
-      // Capture screenshot on failure if enabled
-      let screenshotPath: string | undefined;
-      if (this.config.screenshot_on_failure) {
-        logger.debug(`Screenshot on failure enabled, attempting capture for VU ${context.vu_id}`);
-        try {
-          const page = this.pages.get(context.vu_id);
-          if (page && !page.isClosed()) {
-            screenshotPath = await this.captureFailureScreenshot(page, context.vu_id, action.command);
-          } else {
-            logger.warn(`Cannot capture screenshot: page is ${page ? 'closed' : 'not found'} for VU ${context.vu_id}`);
-          }
-        } catch (screenshotError: any) {
-          logger.warn(`Failed to capture failure screenshot: ${screenshotError.message}`);
-        }
-      }
-
-      return {
-        success: false,
-        error: error.message,
-        shouldRecord: shouldRecordError,
-        response_time: verificationMetrics?.duration,
-        custom_metrics: {
-          vu_id: context.vu_id,
-          command: action.command,
-          error_type: error.constructor.name,
-          error_stack: error.stack?.split('\n').slice(0, 3).join('; '),
-          verification_metrics: verificationMetrics,
-          screenshot: screenshotPath
-        }
-      };
+      return this.handleExecutionError(error, action, context);
     }
   }
 
-  private async handleGoto(page: Page, action: WebAction): Promise<any> {
-    const fullUrl = action.url?.startsWith('http')
-        ? action.url
-        : `${this.config.base_url}${action.url || ''}`;
-
-    const response = await page.goto(fullUrl, {
-      timeout: action.timeout || 30000,
-      waitUntil: action.waitUntil || 'domcontentloaded'
-    });
-
-    return { 
-      url: page.url(),
-      status: response?.status(),
-      headers: await response?.allHeaders(),
-      loading_time: Date.now() - performance.now()
-    };
+  private async executeWithTiming<T extends { action_time?: number }>(
+    fn: () => Promise<T>
+  ): Promise<T> {
+    const actionStart = Date.now();
+    const result = await fn();
+    result.action_time = Date.now() - actionStart;
+    return result;
   }
 
-  private async handleClick(page: Page, action: WebAction): Promise<any> {
-    const timeout = action.timeout || 30000;
-    const selector = action.selector!;
+  private async executeInteractionWithMeasurement(
+    page: Page,
+    action: WebAction,
+    actionType: string,
+    fn: () => Promise<any>
+  ): Promise<{ result: any; verificationMetrics?: VerificationStepMetrics }> {
+    const actionStart = Date.now();
+    let result: any;
+    let verificationMetrics: VerificationStepMetrics | undefined;
 
-    // Wait for the element to be visible and stable before clicking
-    await page.waitForSelector(selector, {
-      state: 'visible',
-      timeout
-    });
-
-    // Highlight element before clicking (if enabled)
-    await this.highlightElement(page, selector);
-
-    // Click using locator for reliability
-    await page.locator(selector).click({ timeout });
-
-    return { clicked: selector };
-  }
-
-  private async handleFill(page: Page, action: WebAction): Promise<any> {
-    const timeout = action.timeout || 30000;
-
-    // Wait for the element to be visible before filling
-    await page.waitForSelector(action.selector!, {
-      state: 'visible',
-      timeout
-    });
-
-    // Highlight element before filling (if enabled)
-    await this.highlightElement(page, action.selector!);
-
-    await page.locator(action.selector!).fill(action.value as string, { timeout });
-
-    return { filled: action.selector, value: action.value };
-  }
-
-  private async handleSelect(page: Page, action: WebAction): Promise<any> {
-    const timeout = action.timeout || 30000;
-
-    await page.waitForSelector(action.selector!, {
-      state: 'visible',
-      timeout
-    });
-
-    // Highlight element before selecting (if enabled)
-    await this.highlightElement(page, action.selector!);
-
-    await page.locator(action.selector!).selectOption(action.value as string, { timeout });
-
-    return { selected: action.selector, value: action.value };
-  }
-
-  private async handlePress(page: Page, action: WebAction): Promise<any> {
-    const timeout = action.timeout || 30000;
-    const key = action.key as string;
-
-    if (action.selector) {
-      // Press key on specific element
-      await page.waitForSelector(action.selector, {
-        state: 'visible',
-        timeout
-      });
-
-      // Highlight element before pressing (if enabled)
-      await this.highlightElement(page, action.selector);
-
-      await page.locator(action.selector).press(key, { timeout });
-
-      return { pressed: key, selector: action.selector };
+    if (action.measureVerification) {
+      const measured = await VerificationMetricsCollector.measureVerificationStep(
+        action.verificationName || `${actionType}_action`,
+        actionType,
+        fn,
+        { selector: action.selector, expected_text: action.value as string }
+      );
+      result = measured.result;
+      verificationMetrics = measured.metrics;
     } else {
-      // Press key globally (on the page)
-      await page.keyboard.press(key);
-
-      return { pressed: key };
-    }
-  }
-
-  private async handleWaitForSelector(page: Page, action: WebAction): Promise<any> {
-    await page.waitForSelector(action.selector!, {
-      timeout: action.timeout || 30000
-    });
-    return { waited_for: action.selector };
-  }
-
-  private async handleVerifyExists(page: Page, action: WebAction): Promise<any> {
-    await page.waitForSelector(action.selector!, {
-      state: 'attached',
-      timeout: action.timeout || 30000
-    });
-
-    const elementCount = await page.locator(action.selector!).count();
-    return {
-      verified: 'exists',
-      selector: action.selector,
-      name: action.name,
-      found_elements: elementCount,
-      element_count: elementCount
-    };
-  }
-
-  private async handleVerifyVisible(page: Page, action: WebAction): Promise<any> {
-    await page.waitForSelector(action.selector!, {
-      state: 'visible',
-      timeout: action.timeout || 30000
-    });
-
-    return {
-      verified: 'visible',
-      selector: action.selector,
-      name: action.name,
-      is_visible: true
-    };
-  }
-
-  private async handleVerifyText(page: Page, action: WebAction): Promise<any> {
-    await page.waitForSelector(action.selector!, {
-      state: 'attached',
-      timeout: action.timeout || 30000
-    });
-
-    const textLocator = page.locator(action.selector!);
-    const actualText = await textLocator.textContent();
-    const expectedText = action.expected_text as string;
-
-    if (!actualText || !actualText.includes(expectedText)) {
-      throw new Error(`Verification failed: Element "${action.selector}" text "${actualText}" does not contain expected text "${expectedText}"${action.name ? ` (${action.name})` : ''}`);
+      result = await fn();
     }
 
-    return {
-      verified: 'text',
-      selector: action.selector,
-      name: action.name,
-      expected_text: expectedText,
-      actual_text: actualText,
-      text_match: true
-    };
+    result.action_time = Date.now() - actionStart;
+    return { result, verificationMetrics };
   }
 
-  private async handleVerifyContains(page: Page, action: WebAction): Promise<any> {
-    await page.waitForSelector(action.selector!, {
-      state: 'attached',
-      timeout: action.timeout || 30000
-    });
+  private async executeVerificationWithMeasurement(
+    page: Page,
+    action: WebAction,
+    actionType: string,
+    fn: () => Promise<any>
+  ): Promise<{ result: any; verificationMetrics?: VerificationStepMetrics }> {
+    const actionStart = Date.now();
+    let result: any;
+    let verificationMetrics: VerificationStepMetrics | undefined;
 
-    const textLocator = page.locator(action.selector!);
-    const actualText = await textLocator.textContent();
-    const expectedText = action.value as string;
-
-    if (!actualText || !actualText.includes(expectedText)) {
-      throw new Error(`Verification failed: Element "${action.selector}" text "${actualText}" does not contain "${expectedText}"${action.name ? ` (${action.name})` : ''}`);
+    if (action.measureVerification) {
+      const measured = await VerificationMetricsCollector.measureVerificationStep(
+        action.verificationName || action.command,
+        actionType,
+        fn,
+        { selector: action.selector }
+      );
+      result = measured.result;
+      verificationMetrics = measured.metrics;
+    } else {
+      result = await fn();
     }
 
-    return {
-      verified: 'contains',
-      selector: action.selector,
-      name: action.name,
-      expected_text: expectedText,
-      actual_text: actualText,
-      text_match: true
-    };
+    result.action_time = Date.now() - actionStart;
+    return { result, verificationMetrics };
   }
 
-  private async handleVerifyNotExists(page: Page, action: WebAction): Promise<any> {
-    try {
-      await page.waitForSelector(action.selector!, {
-        state: 'detached',
-        timeout: action.timeout || 5000
-      });
-    } catch (error) {
-      const count = await page.locator(action.selector!).count();
-      if (count > 0) {
-        throw new Error(`Verification failed: Element "${action.selector}" exists but should not exist${action.name ? ` (${action.name})` : ''}`);
+  private async executeVerification(
+    page: Page,
+    action: WebAction,
+    fn: () => Promise<any>
+  ): Promise<{ result: any; verificationMetrics: VerificationStepMetrics }> {
+    const measured = await VerificationMetricsCollector.measureVerificationStep(
+      action.verificationName || action.name || action.command,
+      'verification',
+      fn,
+      { selector: action.selector, expected_text: action.expected_text }
+    );
+    return { result: measured.result, verificationMetrics: measured.metrics };
+  }
+
+  private async handleExecutionError(error: any, action: WebAction, context: VUContext): Promise<ProtocolResult> {
+    const measurableCommands = [
+      'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
+      'wait_for_selector', 'wait_for_text',
+      'measure_web_vitals', 'performance_audit'
+    ];
+    const shouldRecordError = measurableCommands.includes(action.command);
+    const verificationMetrics = error.verificationMetrics;
+
+    let screenshotPath: string | undefined;
+    if (this.screenshotCapture.isEnabled()) {
+      logger.debug(`Screenshot on failure enabled, attempting capture for VU ${context.vu_id}`);
+      try {
+        const page = this.browserManager.getExistingPage(context.vu_id);
+        if (page && !page.isClosed()) {
+          screenshotPath = await this.screenshotCapture.captureFailureScreenshot(page, context.vu_id, action.command);
+        } else {
+          logger.warn(`Cannot capture screenshot: page is ${page ? 'closed' : 'not found'} for VU ${context.vu_id}`);
+        }
+      } catch (screenshotError: any) {
+        logger.warn(`Failed to capture failure screenshot: ${screenshotError.message}`);
       }
     }
 
     return {
-      verified: 'not_exists',
-      selector: action.selector,
-      name: action.name,
-      found_elements: 0
+      success: false,
+      error: error.message,
+      shouldRecord: shouldRecordError,
+      response_time: verificationMetrics?.duration,
+      custom_metrics: {
+        vu_id: context.vu_id,
+        command: action.command,
+        error_type: error.constructor.name,
+        error_stack: error.stack?.split('\n').slice(0, 3).join('; '),
+        verification_metrics: verificationMetrics,
+        screenshot: screenshotPath
+      }
     };
-  }
-
-  private async handleLegacyAction(page: Page, action: WebAction, context: VUContext): Promise<any> {
-    // Handle any legacy actions not covered by new implementation
-    switch (action.command) {
-      case 'evaluate':
-        if (action.script) {
-          const result = await page.evaluate(action.script);
-          return { evaluation_result: result };
-        }
-        break;
-      case 'hover':
-        await page.hover(action.selector!);
-        return { hovered: action.selector };
-      default:
-        throw new Error(`Unsupported web action: ${action.command}`);
-    }
   }
 
   private async getPage(vuId: number): Promise<Page> {
-    let page = this.pages.get(vuId);
-
-    if (!page) {
-      const browser = await this.createBrowserForVU(vuId);
-      this.browsers.set(vuId, browser);
-
-      const context = await browser.newContext({
-        viewport: this.config.viewport || { width: 1280, height: 720 },
-        ignoreHTTPSErrors: true,
-        storageState: undefined
-      });
-
-      page = await context.newPage();
-      page.setDefaultTimeout(30000);
-      page.setDefaultNavigationTimeout(30000);
-
-      // Clear storage if configured
-      await this.clearStorageIfConfigured(page, context);
-
-      this.contexts.set(vuId, context);
-      this.pages.set(vuId, page);
-
-      logger.debug(`VU ${vuId}: Created enhanced browser with Web Vitals support`);
-    }
-
-    return page;
-  }
-
-  private async createBrowserForVU(vuId: number): Promise<Browser> {
-    const browserType = this.config.type || 'chromium';
-
-    const launchOptions: any = {
-      headless: this.config.headless !== false,
-      slowMo: this.config.slow_mo || 0,
-      args: [
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-        '--disable-http-cache',
-        '--disable-cache',
-        '--disable-application-cache',
-        '--disable-offline-load-stale-cache',
-        '--disk-cache-size=0',
-        '--media-cache-size=0',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-background-networking',
-        '--disable-sync',
-        '--metrics-recording-only',
-        '--mute-audio',
-        '--disable-renderer-backgrounding',
-        // Enable performance monitoring
-        '--enable-precise-memory-info',
-        '--enable-performance-manager-web-contents-observer',
-        '--enable-experimental-web-platform-features'
-      ]
-    };
-
-    let browser: Browser;
-
-    try {
-      switch (browserType) {
-        case 'chromium':
-          browser = await chromium.launch(launchOptions);
-          break;
-        case 'chrome':
-          browser = await chromium.launch({ ...launchOptions, channel: 'chrome' });
-          break;
-        case 'msedge':
-          browser = await chromium.launch({ ...launchOptions, channel: 'msedge' });
-          break;
-        case 'firefox':
-          browser = await firefox.launch(launchOptions);
-          break;
-        case 'webkit':
-          browser = await webkit.launch(launchOptions);
-          break;
-        default:
-          throw new Error(`Unsupported browser type: ${browserType}. Supported: chromium, chrome, msedge, firefox, webkit`);
+    return this.browserManager.getPage(vuId, async (page, context) => {
+      logger.info(`VU ${vuId}: network_capture config = ${JSON.stringify(this.config.network_capture)}`);
+      if (this.config.network_capture?.enabled) {
+        this.networkManager.setupNetworkCapture(page, vuId, this.config.network_capture);
+      } else {
+        logger.info(`VU ${vuId}: Network capture NOT enabled`);
       }
 
-      logger.debug(`VU ${vuId}: Launched enhanced ${browserType} browser with Web Vitals support`);
-      return browser;
-
-    } catch (error) {
-      logger.error(`VU ${vuId}: Failed to launch ${browserType} browser:`, error);
-      throw error;
-    }
+      await this.storageManager.clearStorageIfConfigured(page, context, this.config.clear_storage);
+    });
   }
 
-  // Get verification metrics for a specific VU
   getVerificationMetrics(vuId: number): VerificationStepMetrics[] {
     return this.verificationMetrics.get(vuId) || [];
   }
 
-  // Get aggregated verification metrics across all VUs
+  getNetworkCalls(vuId: number): CapturedNetworkCall[] {
+    return this.networkManager.getNetworkCalls(vuId);
+  }
+
   getAggregatedVerificationMetrics(): {
     total_verifications: number;
     success_rate: number;
@@ -707,260 +443,43 @@ export class WebHandler implements ProtocolHandler {
 
     const successful = allMetrics.filter(m => m.success);
     const durations = allMetrics.map(m => m.duration).sort((a, b) => a - b);
-    
+
     return {
       total_verifications: allMetrics.length,
       success_rate: successful.length / allMetrics.length,
       average_duration: durations.reduce((a, b) => a + b, 0) / durations.length,
       p95_duration: durations[Math.floor(durations.length * 0.95)],
-      slowest_step: allMetrics.reduce((prev, current) => 
+      slowest_step: allMetrics.reduce((prev, current) =>
         prev.duration > current.duration ? prev : current
       ),
-      fastest_step: allMetrics.reduce((prev, current) => 
+      fastest_step: allMetrics.reduce((prev, current) =>
         prev.duration < current.duration ? prev : current
       )
     };
   }
 
   async cleanup(): Promise<void> {
-    const browserCount = this.browsers.size;
-    logger.debug(`Cleaning up ${browserCount} enhanced browsers with Web Vitals data...`);
+    logger.debug(`Cleaning up enhanced browsers with Web Vitals data...`);
+    logger.info('Final verification metrics summary:', this.getAggregatedVerificationMetrics());
 
-    // Log final verification metrics summary
-    const aggregatedMetrics = this.getAggregatedVerificationMetrics();
-    logger.info('Final verification metrics summary:', aggregatedMetrics);
-
-    // Close all resources
-    for (const [vuId, page] of this.pages) {
-      try {
-        if (!page.isClosed()) {
-          await page.close();
-        }
-      } catch (error) {
-        logger.warn(`VU ${vuId}: Error closing page:`, error);
-      }
-    }
-
-    for (const [vuId, context] of this.contexts) {
-      try {
-        await context.close();
-      } catch (error) {
-        logger.warn(`VU ${vuId}: Error closing context:`, error);
-      }
-    }
-
-    for (const [vuId, browser] of this.browsers) {
-      try {
-        if (browser.isConnected()) {
-          await browser.close();
-        }
-      } catch (error) {
-        logger.warn(`VU ${vuId}: Error closing browser:`, error);
-      }
-    }
-
-    this.pages.clear();
-    this.contexts.clear();
-    this.browsers.clear();
+    await this.browserManager.cleanupAll();
     this.verificationMetrics.clear();
+    this.networkManager.clearAll();
 
-    logger.debug(`Enhanced cleanup completed - ${browserCount} browsers closed`);
+    logger.debug(`Enhanced cleanup completed`);
   }
 
   async cleanupVU(vuId: number): Promise<void> {
-    logger.debug(`Cleaning up enhanced browser resources for VU ${vuId}...`);
-
-    const page = this.pages.get(vuId);
-    if (page) {
-      try {
-        if (!page.isClosed()) {
-          await page.close();
-        }
-      } catch (error) {
-        logger.warn(`VU ${vuId}: Error closing page:`, error);
-      }
-      this.pages.delete(vuId);
-    }
-
-    const context = this.contexts.get(vuId);
-    if (context) {
-      try {
-        await context.close();
-      } catch (error: any) {
-        // Ignore "context already closed" errors - this is expected when browser closes first
-        if (!error?.message?.includes('Failed to find context') &&
-            !error?.message?.includes('Target closed') &&
-            !error?.message?.includes('has been closed')) {
-          logger.warn(`VU ${vuId}: Error closing context:`, error);
-        }
-      }
-      this.contexts.delete(vuId);
-    }
-
-    const browser = this.browsers.get(vuId);
-    if (browser) {
-      try {
-        if (browser.isConnected()) {
-          await browser.close();
-        }
-      } catch (error) {
-        logger.warn(`VU ${vuId}: Error closing browser:`, error);
-      }
-      this.browsers.delete(vuId);
-    }
-
-    // Clean up verification metrics
+    await this.browserManager.cleanupVU(vuId);
     this.verificationMetrics.delete(vuId);
-
-    logger.debug(`VU ${vuId}: Enhanced browser cleanup completed`);
+    this.networkManager.clearVU(vuId);
   }
 
   getBrowserInfo(vuId: number): { connected: boolean } | null {
-    const browser = this.browsers.get(vuId);
-    if (!browser) return null;
-
-    return {
-      connected: browser.isConnected()
-    };
+    return this.browserManager.getBrowserInfo(vuId);
   }
 
   getActiveVUCount(): number {
-    return this.browsers.size;
-  }
-
-  /**
-   * Clear browser storage (localStorage, sessionStorage, cookies) if configured
-   */
-  private async clearStorageIfConfigured(page: Page, context: BrowserContext): Promise<void> {
-    const clearConfig = this.config.clear_storage;
-
-    if (!clearConfig) return;
-
-    const config: ClearStorageConfig = typeof clearConfig === 'boolean'
-      ? { local_storage: true, session_storage: true, cookies: true, cache: false }
-      : clearConfig;
-
-    try {
-      // We need to navigate to a page first to access storage
-      // Use about:blank or a data URL
-      await page.goto('about:blank');
-
-      // Clear cookies
-      if (config.cookies !== false) {
-        await context.clearCookies();
-        logger.debug('Cleared cookies');
-      }
-
-      // Clear localStorage and sessionStorage
-      if (config.local_storage !== false || config.session_storage !== false) {
-        await page.evaluate((opts) => {
-          if (opts.local_storage !== false) {
-            try { localStorage.clear(); } catch (e) { /* ignore */ }
-          }
-          if (opts.session_storage !== false) {
-            try { sessionStorage.clear(); } catch (e) { /* ignore */ }
-          }
-        }, { local_storage: config.local_storage, session_storage: config.session_storage });
-
-        if (config.local_storage !== false) logger.debug('Cleared localStorage');
-        if (config.session_storage !== false) logger.debug('Cleared sessionStorage');
-      }
-
-      logger.debug('Browser storage cleared');
-
-    } catch (error) {
-      logger.warn('Failed to clear storage:', error);
-    }
-  }
-
-  /**
-   * Highlight an element before interacting with it (for debugging)
-   */
-  private async highlightElement(page: Page, selector: string): Promise<void> {
-    const highlightConfig = this.config.highlight;
-
-    // Skip if highlight is not enabled
-    if (!highlightConfig) return;
-
-    const config: HighlightConfig = typeof highlightConfig === 'boolean'
-      ? { enabled: highlightConfig }
-      : highlightConfig;
-
-    if (!config.enabled) return;
-
-    const duration = config.duration || 500;
-    const color = config.color || '#ff0000';
-    const style = config.style || 'border';
-
-    try {
-      const locator = page.locator(selector).first();
-      const count = await locator.count();
-
-      if (count === 0) return;
-
-      // Apply highlight styles
-      await locator.evaluate((el, opts) => {
-        const { color, style, duration } = opts;
-        const originalStyle = el.getAttribute('style') || '';
-
-        let highlightStyle = '';
-        if (style === 'border' || style === 'both') {
-          highlightStyle += `outline: 3px solid ${color} !important; outline-offset: 2px !important;`;
-        }
-        if (style === 'background' || style === 'both') {
-          highlightStyle += `background-color: ${color}33 !important;`;
-        }
-
-        el.setAttribute('style', originalStyle + highlightStyle);
-
-        // Restore original style after duration
-        setTimeout(() => {
-          el.setAttribute('style', originalStyle);
-        }, duration);
-      }, { color, style, duration });
-
-      // Wait for highlight to be visible
-      await page.waitForTimeout(duration);
-
-    } catch (error) {
-      // Don't fail the test if highlighting fails
-      logger.debug(`Failed to highlight element ${selector}:`, error);
-    }
-  }
-
-  /**
-   * Capture a screenshot when a test step fails
-   */
-  private async captureFailureScreenshot(page: Page, vuId: number, command: string): Promise<string> {
-    const screenshotConfig = this.config.screenshot_on_failure;
-
-    // Parse config - can be boolean or ScreenshotConfig object
-    let outputDir = 'screenshots';
-    let fullPage = true;
-
-    if (typeof screenshotConfig === 'object') {
-      outputDir = screenshotConfig.output_dir || 'screenshots';
-      fullPage = screenshotConfig.full_page !== false;
-    }
-
-    // Ensure directory exists
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    // Generate unique filename with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const sanitizedCommand = command.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const filename = `failure_vu${vuId}_${sanitizedCommand}_${timestamp}.png`;
-    const screenshotPath = path.join(outputDir, filename);
-
-    // Capture the screenshot
-    await page.screenshot({
-      path: screenshotPath,
-      fullPage
-    });
-
-    logger.info(`📸 Screenshot captured: ${screenshotPath}`);
-    return screenshotPath;
+    return this.browserManager.getActiveVUCount();
   }
 }

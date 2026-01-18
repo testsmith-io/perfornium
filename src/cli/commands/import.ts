@@ -14,7 +14,7 @@ import {OutputFormat, TestOutputWriter} from "../../utils/test-output-writer";
 
 interface ImportOptions {
     output: string;
-    format: 'yaml' | 'typescript';  // Now supports typescript
+    format: 'yaml' | 'typescript';
     verbose?: boolean;
     interactive?: boolean;
     autoCorrelate?: boolean;

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { EnhancedHTMLReportGenerator } from '../../reporting/enhanced-html-generator';
+import { HTMLReportGenerator } from '../../reporting/html-generator';
 import { logger } from '../../utils/logger';
 
 export async function reportCommand(
@@ -29,7 +29,7 @@ export async function reportCommand(
       process.exit(1);
     }
     
-    const generator = new EnhancedHTMLReportGenerator();
+    const generator = new HTMLReportGenerator();
     const outputPath = options.output || 'report.html';
 
     await generator.generate(

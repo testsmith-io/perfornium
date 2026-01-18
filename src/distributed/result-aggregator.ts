@@ -11,7 +11,7 @@ export interface AggregatedResults {
     start_time: number;
     end_time: number;
     duration: number;
-    total_duration: number;  // Duration in seconds for report
+    total_duration: number;  // Duration in milliseconds
     total_virtual_users: number;
     peak_virtual_users: number;
     successful_requests: number;
@@ -154,9 +154,6 @@ export class ResultAggregator {
       }
     }
 
-    // Duration in seconds for report display
-    const totalDurationSeconds = duration / 1000;
-
     // Sort VU ramp-up events by start time for proper chart rendering
     const sortedVURampUp = [...this.vuRampUpEvents].sort((a, b) => a.start_time - b.start_time);
 
@@ -170,7 +167,7 @@ export class ResultAggregator {
         start_time: this.startTime,
         end_time: this.endTime,
         duration,
-        total_duration: totalDurationSeconds,
+        total_duration: duration,  // Store in milliseconds for consistency
         total_virtual_users: totalVUs,
         peak_virtual_users: totalVUs,
         successful_requests: successfulRequests,

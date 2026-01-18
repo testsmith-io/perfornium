@@ -66,3 +66,31 @@ jobs:
           files: vscode-extension/perfornium-${{ github.event.release.tag_name }}.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  extras:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create extras archive
+        run: |
+          mkdir -p perfornium-extras
+          cp -r scripts/agents perfornium-extras/
+          cp docker-compose.yml perfornium-extras/
+          cp .env.example perfornium-extras/
+          zip -r perfornium-extras-${{ github.event.release.tag_name }}.zip perfornium-extras/
+          tar -czvf perfornium-extras-${{ github.event.release.tag_name }}.tar.gz perfornium-extras/
+
+      - name: Upload extras to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            perfornium-extras-${{ github.event.release.tag_name }}.zip
+            perfornium-extras-${{ github.event.release.tag_name }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

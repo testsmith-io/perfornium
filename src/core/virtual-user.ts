@@ -2,24 +2,18 @@ import { Scenario, VUHooks } from '../config/types/hooks';
 import { MetricsCollector } from '../metrics/collector';
 import { ProtocolHandler } from '../protocols/base';
 import { StepExecutor } from './step-executor';
-import { CSVDataProvider, CSVDataRow, CSVDataConfig } from './csv-data-provider';
 import { VUHooksManager, ScenarioHooksManager } from './hooks-manager';
-import { sleep, randomBetween, parseTime } from '../utils/time';
 import { logger } from '../utils/logger';
 import { VUContext } from '../config';
-import { GlobalCSVConfig } from '../config';
+import { DataManager, DataOptions, DataContext, DataRow } from './data';
+import { ThinkTimeStrategy, ScenarioSelector } from './strategies';
 
 // Extended context interface that includes optional CSV data
-interface EnhancedVUContext extends VUContext {
-  csv_data?: CSVDataRow;
-  global_csv_data?: CSVDataRow;  // Separate storage for global CSV
-}
+interface EnhancedVUContext extends VUContext, DataContext {}
 
-// Global CSV configuration passed to VirtualUser
-export interface GlobalCSVOptions {
-  config: GlobalCSVConfig;
-  mode?: 'next' | 'unique' | 'random';
-}
+// Re-export for backward compatibility
+export { DataOptions as GlobalCSVOptions } from './data';
+export type { DataRow as CSVDataRow } from './data';
 
 export class VirtualUser {
   private id: number;
@@ -28,17 +22,15 @@ export class VirtualUser {
   private stepExecutor: StepExecutor;
   private isActive: boolean = true;
   private scenarios: Scenario[] = [];
-  private csvProviders: Map<string, CSVDataProvider> = new Map();
 
-  // Add hooks support
+  // Managers and strategies
   private vuHooksManager: VUHooksManager;
+  private dataManager: DataManager;
+  private thinkTimeStrategy: ThinkTimeStrategy;
+  private scenarioSelector: ScenarioSelector;
+
   private testName: string;
   private handlers: Map<string, ProtocolHandler>;
-  private globalThinkTime?: string | number; // Store global think time
-
-  // Global CSV support
-  private globalCSVProvider?: CSVDataProvider;
-  private globalCSVMode?: 'next' | 'unique' | 'random';
 
   constructor(
     id: number,
@@ -47,151 +39,52 @@ export class VirtualUser {
     testName: string = 'Load Test',
     vuHooks?: VUHooks,
     globalThinkTime?: string | number,
-    globalCSV?: GlobalCSVOptions
+    globalCSV?: DataOptions
   ) {
     logger.debug(`VirtualUser ${id} created`);
     this.id = id;
     this.metrics = metrics;
     this.handlers = handlers;
     this.testName = testName;
-    this.globalThinkTime = globalThinkTime; // Store global think time
-    this.stepExecutor = new StepExecutor(handlers, testName); // Pass testName to StepExecutor
+    this.stepExecutor = new StepExecutor(handlers, testName);
     this.vuHooksManager = new VUHooksManager(testName, id, vuHooks);
 
-    // Initialize global CSV if configured
-    if (globalCSV?.config) {
-      this.globalCSVMode = globalCSV.mode || 'next';
-      this.globalCSVProvider = CSVDataProvider.getInstance(globalCSV.config as CSVDataConfig);
-      logger.debug(`VU${id}: Global CSV configured (mode: ${this.globalCSVMode})`);
-    }
+    // Initialize managers and strategies
+    this.dataManager = new DataManager(id, globalCSV);
+    this.thinkTimeStrategy = new ThinkTimeStrategy(globalThinkTime);
+    this.scenarioSelector = new ScenarioSelector();
 
     this.context = {
       vu_id: id,
       iteration: 0,
       variables: {},
       extracted_data: {}
-      // csv_data and global_csv_data will be added only when needed
     };
   }
 
-  // FIXED: Now async to support CSV initialization
   async setScenarios(scenarios: Scenario[]): Promise<void> {
     logger.debug(`VU${this.id}: setScenarios called with ${scenarios.length} scenarios`);
     this.scenarios = scenarios;
 
-    // Debug: Let's see what the scenarios look like
     for (const scenario of scenarios) {
       logger.debug(`VU${this.id}: Scenario "${scenario.name}" config: ${JSON.stringify(scenario, null, 2)}`);
     }
 
-    // Initialize CSV providers only if needed
-    await this.initializeCSVProvidersIfNeeded();
+    await this.dataManager.initializeForScenarios(scenarios);
     logger.debug(`VU${this.id}: setScenarios completed`);
   }
 
-  /**
-   * Initialize CSV providers only for scenarios that need them
-   */
-  private async initializeCSVProvidersIfNeeded(): Promise<void> {
-    const csvScenarios = this.scenarios.filter(s => (s as any).csv_data);
-
-    if (csvScenarios.length === 0) {
-      // No CSV scenarios - skip initialization entirely
-      logger.debug(`VU${this.id}: No CSV scenarios found, skipping CSV initialization`);
-      return;
-    }
-
-    logger.debug(`VU${this.id}: Found ${csvScenarios.length} scenarios with CSV data`);
-
-    for (const scenario of csvScenarios) {
-      const csvScenario = scenario as any; // Cast to access CSV properties
-      logger.debug(`VU${this.id}: Processing CSV for scenario "${scenario.name}": ${JSON.stringify(csvScenario.csv_data)}`);
-
-      if (csvScenario.csv_data) {
-        try {
-          const provider = CSVDataProvider.getInstance(csvScenario.csv_data);
-          await provider.loadData();
-          this.csvProviders.set(scenario.name, provider);
-          logger.debug(`VU${this.id}: Initialized CSV provider for scenario "${scenario.name}"`);
-        } catch (error) {
-          logger.warn(`VU${this.id}: Failed to initialize CSV for scenario "${scenario.name}":`, error);
-          // Don't fail the entire VU - just log the warning and continue
-        }
-      }
-    }
-
-    logger.debug(`VU${this.id}: CSV initialization completed. Providers: ${this.csvProviders.size}`);
-  }
-
-  /**
-   * Load global CSV data and merge into context variables
-   * Called once at the start of each VU execution cycle
-   */
-  private async loadGlobalCSVData(): Promise<void> {
-    if (!this.globalCSVProvider) {
-      return;
-    }
-
-    try {
-      await this.globalCSVProvider.loadData();
-
-      let csvData: CSVDataRow | null = null;
-
-      switch (this.globalCSVMode) {
-        case 'unique':
-          csvData = await this.globalCSVProvider.getUniqueRow(this.id);
-          break;
-        case 'random':
-          csvData = await this.globalCSVProvider.getRandomRow(this.id);
-          break;
-        case 'next':
-        default:
-          csvData = await this.globalCSVProvider.getNextRow(this.id);
-          break;
-      }
-
-      if (csvData) {
-        this.context.global_csv_data = csvData;
-
-        // Merge global CSV data into variables (can be overridden by scenario CSV)
-        logger.debug(`VU${this.id}: Adding global CSV columns to variables: ${Object.keys(csvData).join(', ')}`);
-        for (const [key, value] of Object.entries(csvData)) {
-          this.context.variables[key] = value;
-          logger.debug(`VU${this.id}: Set global CSV variable: ${key} = ${value}`);
-        }
-
-        logger.debug(`VU ${this.id}: Loaded global CSV data: ${Object.keys(csvData).join(', ')}`);
-      } else {
-        logger.debug(`VU${this.id}: Global CSV data exhausted - stopping VU`);
-        delete this.context.global_csv_data;
-        await this.stop();
-        throw new Error(`VU${this.id} terminated due to global CSV data exhaustion`);
-      }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('terminated due to global CSV')) {
-        throw error;
-      }
-      logger.warn(`📊 VU ${this.id}: Failed to load global CSV data:`, error);
-      delete this.context.global_csv_data;
-    }
-  }
-
-  // This method executes scenarios once (called repeatedly by load patterns)
   async executeScenarios(): Promise<void> {
     if (!this.isActive || this.scenarios.length === 0) {
       return;
     }
 
     // Load global CSV data first (available to all scenarios)
-    try {
-      await this.loadGlobalCSVData();
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('terminated due to global CSV')) {
-        logger.warn(`📊 VU ${this.id}: Stopping due to global CSV exhaustion`);
-        return;
-      }
-      // Log but continue if global CSV fails for other reasons
-      logger.warn(`📊 VU ${this.id}: Global CSV loading failed, continuing without:`, error);
+    const globalCsvLoaded = await this.dataManager.loadGlobalData(this.context);
+    if (!globalCsvLoaded) {
+      logger.warn(`📊 VU ${this.id}: Stopping due to global CSV exhaustion`);
+      await this.stop();
+      return;
     }
 
     // Execute beforeVU hook
@@ -200,23 +93,21 @@ export class VirtualUser {
         this.context.variables,
         this.context.extracted_data
       );
-      
-      // Merge any variables returned by beforeVU hook
+
       if (beforeVUResult?.variables) {
         Object.assign(this.context.variables, beforeVUResult.variables);
         logger.debug(`VU${this.id}: beforeVU hook set variables: ${Object.keys(beforeVUResult.variables).join(', ')}`);
       }
     } catch (error) {
       logger.error(`❌ VU ${this.id} beforeVU hook failed:`, error);
-      // Continue execution even if beforeVU fails
     }
 
     try {
-      const selectedScenarios = this.selectScenarios(this.scenarios);
-      
+      const selectedScenarios = this.scenarioSelector.selectScenarios(this.scenarios);
+
       for (const scenario of selectedScenarios) {
         if (!this.isActive) break;
-        
+
         try {
           await this.executeScenario(scenario);
         } catch (error) {
@@ -225,7 +116,6 @@ export class VirtualUser {
         }
       }
     } finally {
-      // Execute teardownVU hook
       try {
         await this.vuHooksManager.executeTeardownVU(
           this.context.variables,
@@ -255,7 +145,12 @@ export class VirtualUser {
 
   // Load CSV data if this scenario uses it (completely optional)
   logger.debug(`About to load CSV data if needed...`);
-  await this.loadCSVDataIfNeeded(scenario);
+  const csvLoaded = await this.dataManager.loadScenarioData(scenario, this.context);
+  if (!csvLoaded) {
+    logger.debug(`VU${this.id}: CSV data exhausted for scenario "${scenario.name}" - stopping`);
+    await this.stop();
+    throw new Error(`VU${this.id} terminated due to CSV data exhaustion in scenario "${scenario.name}"`);
+  }
   logger.debug(`CSV data loading completed`);
 
   logger.debug(`Context variables after CSV setup: ${JSON.stringify(this.context.variables)}`);
@@ -325,11 +220,8 @@ export class VirtualUser {
         logger.error(`❌ VU ${this.id} beforeLoop hook failed:`, error);
       }
       
-      // For unique CSV mode, get new CSV data each iteration
-      const csvScenario = scenario as any;
-      if (csvScenario.csv_mode === 'unique' && iteration > 0 && this.csvProviders.has(scenario.name)) {
-        await this.loadCSVDataIfNeeded(scenario);
-      }
+      // Start iteration tracking for data manager (handles change_policy)
+      this.dataManager.startIteration(iteration);
       
       try {
         // Execute all steps in sequence
@@ -351,19 +243,13 @@ export class VirtualUser {
             }
 
             // Apply hierarchical think time: step > scenario > global
-            // Skip think time if the NEXT step is a verification/wait step - they measure app
-            // responsiveness and should run immediately after the triggering action
+            // Skip think time if the NEXT step is a verification/wait step
             const nextStep = scenario.steps[stepIndex + 1] as any;
-            const nextCommand = nextStep?.action?.command || '';
-            const nextIsVerificationOrWait = nextCommand.startsWith('verify_') ||
-                                              nextCommand.startsWith('wait_for_') ||
-                                              nextCommand === 'measure_web_vitals' ||
-                                              nextCommand === 'performance_audit';
 
-            if (!nextIsVerificationOrWait) {
-              const effectiveThinkTime = this.getEffectiveThinkTime(step, scenario);
+            if (!this.thinkTimeStrategy.shouldSkipThinkTime(nextStep)) {
+              const effectiveThinkTime = this.thinkTimeStrategy.getEffectiveThinkTime(step, scenario);
               if (effectiveThinkTime !== undefined) {
-                await this.applyThinkTime(effectiveThinkTime);
+                await this.thinkTimeStrategy.applyThinkTime(effectiveThinkTime);
               }
             }
 
@@ -399,9 +285,12 @@ export class VirtualUser {
         throw error;
       }
       
+      // End iteration tracking (releases checked-out data for unique scope)
+      this.dataManager.endIteration(iteration);
+
       // Think time between iterations (except after last iteration)
       if (iteration < loops - 1) {
-        await this.applyThinkTime(scenario.think_time);
+        await this.thinkTimeStrategy.applyThinkTime(scenario.think_time);
       }
     }
   } finally {
@@ -421,111 +310,6 @@ export class VirtualUser {
       await this.executeTeardown(scenario.teardown);
     }
   }
-}
-
-  // ... rest of your existing methods remain exactly the same
-  private async loadCSVDataIfNeeded(scenario: Scenario): Promise<void> {
-    const csvScenario = scenario as any;
-
-    logger.debug(`VU${this.id}: Checking CSV need for scenario "${scenario.name}"`);
-    logger.debug(`VU${this.id}: Has csv_data config: ${!!csvScenario.csv_data}`);
-    logger.debug(`VU${this.id}: Has CSV provider: ${this.csvProviders.has(scenario.name)}`);
-
-    if (!csvScenario.csv_data || !this.csvProviders.has(scenario.name)) {
-      logger.debug(`VU${this.id}: No CSV data needed for scenario "${scenario.name}"`);
-      delete this.context.csv_data;
-      return;
-    }
-
-    try {
-      logger.debug(`VU${this.id}: Loading CSV data for scenario "${scenario.name}"...`);
-      const csvData = await this.loadCSVDataForScenario(csvScenario);
-
-      if (csvData) {
-        this.context.csv_data = csvData;
-
-        logger.debug(`VU${this.id}: Adding CSV columns to variables: ${Object.keys(csvData).join(', ')}`);
-        for (const [key, value] of Object.entries(csvData)) {
-          if (!(key in this.context.variables)) {
-            this.context.variables[key] = value;
-            logger.debug(`VU${this.id}: Added CSV variable: ${key} = ${value}`);
-          } else {
-            logger.debug(`VU${this.id}: Skipped CSV variable ${key} (already in variables)`);
-          }
-        }
-
-        logger.debug(`VU ${this.id}: Loaded CSV data for scenario "${scenario.name}": ${Object.keys(csvData).join(', ')}`);
-      } else {
-        logger.debug(`VU${this.id}: No CSV data available - terminating this VU`);
-        delete this.context.csv_data;
-        this.stop();
-        throw new Error(`VU${this.id} terminated due to CSV data exhaustion in scenario "${scenario.name}"`);
-      }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('terminated due to CSV data exhaustion')) {
-        throw error;
-      }
-
-      logger.warn(`VU ${this.id}: Failed to load CSV data for scenario "${scenario.name}":`, error);
-      delete this.context.csv_data;
-      logger.debug(`VU${this.id}: Continuing with fallback variables after CSV error`);
-    }
-  }
-
-  private async loadCSVDataForScenario(scenario: any): Promise<CSVDataRow | null> {
-    const provider = this.csvProviders.get(scenario.name);
-    if (!provider) {
-      return null;
-    }
-
-    const mode = scenario.csv_mode || 'next';
-
-    switch (mode) {
-      case 'unique':
-        return await provider.getUniqueRow(this.id);
-      case 'random':
-        return await provider.getRandomRow();
-      case 'next':
-      default:
-        return await provider.getNextRow(this.id);
-    }
-  }
-
-  /**
-   * Select scenarios based on weights using proportional distribution.
-   *
-   * Weights determine the probability of a scenario being selected:
-   * - scenario1 (weight: 50) + scenario2 (weight: 25) + scenario3 (weight: 25) = 100
-   * - 50% of VUs will run scenario1, 25% scenario2, 25% scenario3
-   *
-   * If weights don't sum to 100, they are normalized proportionally.
-   */
-  private selectScenarios(scenarios: Scenario[]): Scenario[] {
-    if (scenarios.length === 0) {
-      return [];
-    }
-
-    if (scenarios.length === 1) {
-      return scenarios;
-    }
-
-    // Calculate total weight
-    const totalWeight = scenarios.reduce((sum, s) => sum + (s.weight ?? 100), 0);
-
-    // Generate random value between 0 and totalWeight
-    const random = Math.random() * totalWeight;
-
-    // Select scenario based on cumulative weight
-    let cumulative = 0;
-    for (const scenario of scenarios) {
-      cumulative += (scenario.weight ?? 100);
-      if (random < cumulative) {
-        return [scenario];
-      }
-    }
-
-    // Fallback to last scenario (should not reach here)
-    return [scenarios[scenarios.length - 1]];
   }
 
   private async executeSetup(setupScript: string): Promise<void> {
@@ -558,66 +342,6 @@ export class VirtualUser {
       timeoutPromise
     ]);
   }
-
-  /**
-   * Get effective think time using hierarchical override:
-   * Step think_time > Scenario think_time > Global think_time
-   */
-  private getEffectiveThinkTime(step: any, scenario: Scenario): string | number | undefined {
-    // Step level has highest priority
-    if (step.think_time !== undefined) {
-      return step.think_time;
-    }
-
-    // Scenario level is next
-    if (scenario.think_time !== undefined) {
-      return scenario.think_time;
-    }
-
-    // Global level is fallback
-    return this.globalThinkTime;
-  }
-
-  private async applyThinkTime(thinkTime?: string | number): Promise<void> {
-    if (!thinkTime) {
-      // No think time specified at any level - skip
-      return;
-    }
-
-    if (typeof thinkTime === 'number') {
-      logger.debug(`Applying thinktime: ${thinkTime} seconds`);
-      await sleep(thinkTime * 1000);
-      return;
-    }
-
-    const rangeMatch = thinkTime.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)([sm])?$/);
-    if (rangeMatch) {
-      const [, minStr, maxStr, unit] = rangeMatch;
-      let min = parseFloat(minStr);
-      let max = parseFloat(maxStr);
-      
-      if (unit === 's' || !unit) {
-        min *= 1000;
-        max *= 1000;
-      }
-      
-      const thinkTimeMs = randomBetween(min, max);
-      await sleep(thinkTimeMs);
-    } else {
-      try {
-        const thinkTimeMs = parseTime(thinkTime);
-        await sleep(thinkTimeMs);
-      } catch (error) {
-        logger.warn(`⚠️ Invalid think time format: ${thinkTime}`);
-        await sleep(randomBetween(1000, 3000));
-      }
-    }
-  }
-
-  // stop(): void {
-  //   this.isActive = false;
-  //   logger.debug(`⏹️ VU ${this.id} stopped`);
-  // }
 
   async stop(): Promise<void> {
     this.isActive = false;
