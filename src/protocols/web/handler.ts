@@ -154,6 +154,12 @@ export class WebHandler implements ProtocolHandler {
           ));
           break;
 
+        case 'verify_value':
+          ({ result, verificationMetrics } = await this.executeVerification(
+            page, action, () => this.verificationCommands.handleVerifyValue(page, action)
+          ));
+          break;
+
         case 'measure_web_vitals':
           result = await this.measurementCommands.handleMeasureWebVitals(page, action);
           webVitals = result.web_vitals;
@@ -215,7 +221,7 @@ export class WebHandler implements ProtocolHandler {
 
       // Check for measurable commands
       const measurableCommands = [
-        'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
+        'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists', 'verify_value',
         'wait_for_selector', 'wait_for_text',
         'measure_web_vitals', 'performance_audit'
       ];
@@ -358,7 +364,7 @@ export class WebHandler implements ProtocolHandler {
 
   private async handleExecutionError(error: any, action: WebAction, context: VUContext): Promise<ProtocolResult> {
     const measurableCommands = [
-      'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists',
+      'verify_exists', 'verify_visible', 'verify_text', 'verify_contains', 'verify_not_exists', 'verify_value',
       'wait_for_selector', 'wait_for_text',
       'measure_web_vitals', 'performance_audit'
     ];

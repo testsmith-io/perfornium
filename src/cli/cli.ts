@@ -9,6 +9,7 @@ import { initCommand } from './commands/init';
 import { mockCommand } from './commands/mock';
 import { dashboardCommand } from './commands/dashboard';
 import { startNativeRecording } from '../recorder/native-recorder';
+import { startContinueRecording } from '../recorder/continue-recorder';
 import { distributedCommand } from './commands/distributed';
 
 // Add new import commands
@@ -86,13 +87,29 @@ program
 program
     .command('record')
     .description('Record web interactions for test creation (Ctrl+W to add wait points)')
-    .argument('<url>', 'Starting URL for recording')
+    .argument('[url]', 'Starting URL for recording (required unless using --continue)')
+    .option('-c, --continue <file>', 'Continue recording from last step of existing scenario file')
     .option('-o, --output <file>', 'Output file for recorded scenario')
     .option('--viewport <viewport>', 'Browser viewport size (e.g., 1920x1080)')
     .option('--base-url <url>', 'Base URL to relativize recorded URLs')
     .option('-b, --browser <browser>', 'Browser to use: chromium, chrome, msedge, firefox, webkit', 'chromium')
     .option('-f, --format <format>', 'Output format: yaml, json, or typescript', 'yaml')
-    .action(async (url: string, options: any) => {
+    .action(async (url: string | undefined, options: any) => {
+        // Handle --continue mode
+        if (options.continue) {
+            await startContinueRecording(options.continue, {
+                format: options.format,
+                browser: options.browser
+            });
+            return;
+        }
+
+        // Normal recording mode requires URL
+        if (!url) {
+            console.error('Error: URL is required for recording. Use --continue <file> to continue from an existing scenario.');
+            process.exit(1);
+        }
+
         // Auto-determine file extension if output not specified
         // Save to tests/web directory by default
         if (!options.output) {

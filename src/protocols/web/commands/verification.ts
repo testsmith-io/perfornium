@@ -114,4 +114,30 @@ export class VerificationCommands {
       found_elements: 0
     };
   }
+
+  async handleVerifyValue(page: Page, action: WebAction): Promise<CommandResult> {
+    await page.waitForSelector(action.selector!, {
+      state: 'attached',
+      timeout: action.timeout || 30000
+    });
+
+    const locator = page.locator(action.selector!);
+    const actualValue = await locator.inputValue();
+    const expectedValue = action.value as string;
+
+    if (actualValue !== expectedValue) {
+      throw new Error(
+        `Verification failed: Element "${action.selector}" value "${actualValue}" does not match expected value "${expectedValue}"${action.name ? ` (${action.name})` : ''}`
+      );
+    }
+
+    return {
+      verified: 'value',
+      selector: action.selector,
+      name: action.name,
+      expected_value: expectedValue,
+      actual_value: actualValue,
+      value_match: true
+    };
+  }
 }
