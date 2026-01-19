@@ -110,7 +110,7 @@ export interface WebAction {
   name?: string;
   expected_text?: string;
   command: 'goto' | 'click' | 'fill' | 'press' | 'select' | 'hover' | 'screenshot' | 'wait_for_selector' | 'wait_for_text' |
-           'verify_text' | 'verify_contains' | 'verify_not_exists' | 'verify_exists' | 'verify_visible' | 'evaluate' |
+           'verify_text' | 'verify_contains' | 'verify_not_exists' | 'verify_exists' | 'verify_visible' | 'verify_value' | 'evaluate' |
            'measure_web_vitals' | 'measure_verification' | 'performance_audit' | 'accessibility_audit' |
            'wait_for_load_state' | 'network_idle' | 'dom_ready';
   selector?: string;
